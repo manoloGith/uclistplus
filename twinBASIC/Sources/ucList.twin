@@ -1,0 +1,3546 @@
+[Description("ucListPlus - Lista / ComboBox / Menu con estilo moderno")]
+[FormDesignerId("BA3F558B-3C46-499F-8789-1A9460D65EA1")]
+[ClassId("CFD680A9-6E41-468C-8F30-589708D62375")]
+[InterfaceId("CC066E6E-2A19-4298-8E70-B82B1C9CAA5B")]
+[EventInterfaceId("E417679C-01ED-45AD-8387-2C35AE18E3F7")]
+[COMControl]
+Class ucList
+
+    '-------------------------
+    'Name: ucListPlus
+    'Autor: Leandro Ascierto
+    'Web: www.leandroascierto.com
+    'Publish Date: 7/Jul/2021
+    'Last Update: 31/12/ 2021
+    'Version: 1.0.4
+    '--------------------------
+    'Conversion a twinBASIC (32 y 64 bits)
+    ' - Declaraciones API con PtrSafe / LongPtr.
+    ' - clsSubClass (thunks ASM) reemplazado por SetWindowSubclass (mUcListHelpers).
+    ' - ucScrollbar reemplazado por una barra de desplazamiento interna dibujada
+    '   por el propio control (estilos Google y Microsoft/Themed).
+    ' - Timer1 reemplazado por SetTimer/WM_TIMER.
+    ' - Se mantienen los mismos eventos, propiedades y metodos publicos.
+    '--------------------------
+
+    Option Explicit
+
+    '======================================================================
+    ' API
+    '======================================================================
+    Private Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (ByRef Destination As Any, ByRef Source As Any, ByVal Length As LongPtr)
+    Private Declare PtrSafe Function CreateStreamOnHGlobal Lib "ole32" (ByVal hGlobal As LongPtr, ByVal fDeleteOnRelease As Long, ByRef ppstm As IUnknown) As Long
+    Private Declare PtrSafe Function GlobalAlloc Lib "kernel32" (ByVal uFlags As Long, ByVal dwBytes As LongPtr) As LongPtr
+    Private Declare PtrSafe Function GlobalLock Lib "kernel32" (ByVal hMem As LongPtr) As LongPtr
+    Private Declare PtrSafe Function GlobalUnlock Lib "kernel32" (ByVal hMem As LongPtr) As Long
+    Private Declare PtrSafe Function GlobalFree Lib "kernel32" (ByVal hMem As LongPtr) As LongPtr
+    Private Declare PtrSafe Function PathIsURLW Lib "shlwapi" (ByVal pszPath As LongPtr) As Long
+    Private Declare PtrSafe Function CryptStringToBinaryW Lib "crypt32" (ByVal pszString As LongPtr, ByVal cchString As Long, ByVal dwFlags As Long, ByVal pbBinary As LongPtr, ByRef pcbBinary As Long, ByVal pdwSkip As LongPtr, ByVal pdwFlags As LongPtr) As Long
+    Private Declare PtrSafe Function GetFocus Lib "user32" () As LongPtr
+    Private Declare PtrSafe Function RegisterHotKey Lib "user32" (ByVal hWnd As LongPtr, ByVal ID As Long, ByVal fsModifiers As Long, ByVal vk As Long) As Long
+    Private Declare PtrSafe Function UnregisterHotKey Lib "user32" (ByVal hWnd As LongPtr, ByVal ID As Long) As Long
+    Private Declare PtrSafe Function GetSysColor Lib "user32" (ByVal nIndex As Long) As Long
+    Private Declare PtrSafe Function SetWindowPos Lib "user32" (ByVal hWnd As LongPtr, ByVal hWndInsertAfter As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, ByVal wFlags As Long) As Long
+    Private Declare PtrSafe Function PutFocus Lib "user32" Alias "SetFocus" (ByVal hWnd As LongPtr) As LongPtr
+    Private Declare PtrSafe Function SetParent Lib "user32" (ByVal hWndChild As LongPtr, ByVal hWndNewParent As LongPtr) As LongPtr
+    Private Declare PtrSafe Function ShowWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal nCmdShow As Long) As Long
+    Private Declare PtrSafe Function CreateRoundRectRgn Lib "gdi32" (ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long, ByVal X3 As Long, ByVal Y3 As Long) As LongPtr
+    Private Declare PtrSafe Function SetWindowRgn Lib "user32" (ByVal hWnd As LongPtr, ByVal hRgn As LongPtr, ByVal bRedraw As Long) As Long
+    Private Declare PtrSafe Function DrawText Lib "user32" Alias "DrawTextW" (ByVal hDC As LongPtr, ByVal lpStr As LongPtr, ByVal nCount As Long, ByRef lpRect As RECT, ByVal wFormat As Long) As Long
+    Private Declare PtrSafe Function SetRect Lib "user32" (ByRef lpRect As RECT, ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long) As Long
+    Private Declare PtrSafe Function FillRect Lib "user32" (ByVal hDC As LongPtr, ByRef lpRect As RECT, ByVal hBrush As LongPtr) As Long
+    Private Declare PtrSafe Function CreatePen Lib "gdi32" (ByVal nPenStyle As Long, ByVal nWidth As Long, ByVal crColor As Long) As LongPtr
+    Private Declare PtrSafe Function CreateSolidBrush Lib "gdi32" (ByVal crColor As Long) As LongPtr
+    Private Declare PtrSafe Function DeleteObject Lib "gdi32" (ByVal hObject As LongPtr) As Long
+    Private Declare PtrSafe Function MoveToEx Lib "gdi32" (ByVal hDC As LongPtr, ByVal X As Long, ByVal Y As Long, ByRef lpPoint As POINTAPI) As Long
+    Private Declare PtrSafe Function SelectObject Lib "gdi32" (ByVal hDC As LongPtr, ByVal hObject As LongPtr) As LongPtr
+    Private Declare PtrSafe Function LineTo Lib "gdi32" (ByVal hDC As LongPtr, ByVal X As Long, ByVal Y As Long) As Long
+    Private Declare PtrSafe Function GetObjectType Lib "gdi32" (ByVal hgdiobj As LongPtr) As Long
+    Private Declare PtrSafe Function SetTextColor Lib "gdi32" (ByVal hDC As LongPtr, ByVal crColor As Long) As Long
+    Private Declare PtrSafe Function SetBkMode Lib "gdi32" (ByVal hDC As LongPtr, ByVal nBkMode As Long) As Long
+    Private Declare PtrSafe Function GdipCreateSolidFill Lib "gdiplus" (ByVal argb As Long, ByRef Brush As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDeleteBrush Lib "gdiplus" (ByVal Brush As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreateFromHDC Lib "gdiplus" (ByVal hDC As LongPtr, ByRef hGraphics As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDeleteGraphics Lib "gdiplus" (ByVal hGraphics As LongPtr) As Long
+    Private Declare PtrSafe Function GdipSetSmoothingMode Lib "gdiplus" (ByVal graphics As LongPtr, ByVal SmoothingMd As Long) As Long
+    Private Declare PtrSafe Function GdipCreatePen1 Lib "gdiplus" (ByVal mColor As Long, ByVal mWidth As Single, ByVal mUnit As Long, ByRef mPen As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreatePath Lib "gdiplus" (ByVal mBrushMode As Long, ByRef mpath As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDeletePath Lib "gdiplus" (ByVal mpath As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDrawPath Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mPen As LongPtr, ByVal mpath As LongPtr) As Long
+    Private Declare PtrSafe Function GdipFillPath Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mBrush As LongPtr, ByVal mpath As LongPtr) As Long
+    Private Declare PtrSafe Function GdipAddPathArcI Lib "gdiplus" (ByVal mpath As LongPtr, ByVal mX As Long, ByVal mY As Long, ByVal mWidth As Long, ByVal mHeight As Long, ByVal mStartAngle As Single, ByVal mSweepAngle As Single) As Long
+    Private Declare PtrSafe Function GdipDeletePen Lib "gdiplus" (ByVal mPen As LongPtr) As Long
+    Private Declare PtrSafe Function GdipFillRectangleI Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mBrush As LongPtr, ByVal mX As Long, ByVal mY As Long, ByVal mWidth As Long, ByVal mHeight As Long) As Long
+    Private Declare PtrSafe Function GdipDrawRectangleI Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mPen As LongPtr, ByVal mX As Long, ByVal mY As Long, ByVal mWidth As Long, ByVal mHeight As Long) As Long
+    Private Declare PtrSafe Function GdipClosePathFigure Lib "gdiplus" (ByVal mpath As LongPtr) As Long
+    Private Declare PtrSafe Function GdipLoadImageFromFile Lib "gdiplus" (ByVal mFilename As LongPtr, ByRef mImage As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDisposeImageAttributes Lib "gdiplus" (ByVal imageattr As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreateImageAttributes Lib "gdiplus" (ByRef imageattr As LongPtr) As Long
+    Private Declare PtrSafe Function GdipSetImageAttributesColorMatrix Lib "gdiplus" (ByVal imageattr As LongPtr, ByVal ColorAdjust As Long, ByVal EnableFlag As Long, ByRef MatrixColor As COLORMATRIX, ByRef MatrixGray As COLORMATRIX, ByVal Flags As Long) As Long
+    Private Declare PtrSafe Function GdipDisposeImage Lib "gdiplus" (ByVal Image As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDrawImageRectRectI Lib "gdiplus" (ByVal hGraphics As LongPtr, ByVal hImage As LongPtr, ByVal DstX As Long, ByVal DstY As Long, ByVal DstWidth As Long, ByVal DstHeight As Long, ByVal SrcX As Long, ByVal SrcY As Long, ByVal SrcWidth As Long, ByVal SrcHeight As Long, ByVal srcUnit As Long, Optional ByVal imageAttributes As LongPtr = 0, Optional ByVal Callback As LongPtr = 0, Optional ByVal callbackData As LongPtr = 0) As Long
+    Private Declare PtrSafe Function GdipGetImageHeight Lib "gdiplus" (ByVal mImage As LongPtr, ByRef mHeight As Long) As Long
+    Private Declare PtrSafe Function GdipGetImageWidth Lib "gdiplus" (ByVal mImage As LongPtr, ByRef mWidth As Long) As Long
+    Private Declare PtrSafe Function GdipCreateBitmapFromHICON Lib "gdiplus" (ByVal mHicon As LongPtr, ByRef mBitmap As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreateBitmapFromHBITMAP Lib "gdiplus" (ByVal mHbm As LongPtr, ByVal mhPal As LongPtr, ByRef mBitmap As LongPtr) As Long
+    Private Declare PtrSafe Function GdipLoadImageFromStream Lib "gdiplus" (ByVal Stream As IUnknown, ByRef Image As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreateBitmapFromScan0 Lib "gdiplus" (ByVal mWidth As Long, ByVal mHeight As Long, ByVal mStride As Long, ByVal mPixelFormat As Long, ByVal mScan0 As LongPtr, ByRef mBitmap As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreateLineBrushFromRectWithAngleI Lib "gdiplus" (ByRef mRect As RECT, ByVal mColor1 As Long, ByVal mColor2 As Long, ByVal mAngle As Single, ByVal mIsAngleScalable As Long, ByVal mWrapMode As Long, ByRef mLineGradient As LongPtr) As Long
+    Private Declare PtrSafe Function GdipGetImageGraphicsContext Lib "gdiplus" (ByVal Image As LongPtr, ByRef hGraphics As LongPtr) As Long
+    Private Declare PtrSafe Function GdipSetClipPath Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mpath As LongPtr, ByVal mCombineMode As Long) As Long
+    Private Declare PtrSafe Function GdipResetClip Lib "gdiplus" (ByVal mGraphics As LongPtr) As Long
+    Private Declare PtrSafe Function TrackMouseEvent Lib "user32" (ByRef lpEventTrack As TRACKMOUSEEVENTTYPE) As Long
+    Private Declare PtrSafe Function WindowFromPoint Lib "user32" (ByVal Point As LongLong) As LongPtr
+    Private Declare PtrSafe Function GetCursorPos Lib "user32" (ByRef lpPoint As POINTAPI) As Long
+    Private Declare PtrSafe Function GetAsyncKeyState Lib "user32" (ByVal vKey As Long) As Integer
+    Private Declare PtrSafe Function GetAncestor Lib "user32" (ByVal hWnd As LongPtr, ByVal gaFlags As Long) As LongPtr
+    Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
+    Private Declare PtrSafe Function SendMessageW Lib "user32" (ByVal hWnd As LongPtr, ByVal wMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+    Private Declare PtrSafe Function SetTimer Lib "user32" (ByVal hWnd As LongPtr, ByVal nIDEvent As LongPtr, ByVal uElapse As Long, ByVal lpTimerFunc As LongPtr) As LongPtr
+    Private Declare PtrSafe Function KillTimer Lib "user32" (ByVal hWnd As LongPtr, ByVal nIDEvent As LongPtr) As Long
+    Private Declare PtrSafe Function OpenThemeData Lib "uxtheme" (ByVal hWnd As LongPtr, ByVal pszClassList As LongPtr) As LongPtr
+    Private Declare PtrSafe Function CloseThemeData Lib "uxtheme" (ByVal hTheme As LongPtr) As Long
+    Private Declare PtrSafe Function DrawThemeBackground Lib "uxtheme" (ByVal hTheme As LongPtr, ByVal hDC As LongPtr, ByVal iPartId As Long, ByVal iStateId As Long, ByRef pRect As RECT, ByVal pClipRect As LongPtr) As Long
+    Private Declare PtrSafe Function DrawFrameControl Lib "user32" (ByVal hDC As LongPtr, ByRef lpRect As RECT, ByVal un1 As Long, ByVal un2 As Long) As Long
+    Private Declare PtrSafe Function DrawEdge Lib "user32" (ByVal hDC As LongPtr, ByRef qrc As RECT, ByVal edge As Long, ByVal grfFlags As Long) As Long
+
+    Private Type TRACKMOUSEEVENTTYPE
+        cbSize As Long
+        dwFlags As Long
+        hwndTrack As LongPtr
+        dwHoverTime As Long
+    End Type
+
+    Private Type RECT
+        Left As Long
+        Top As Long
+        Right As Long
+        Bottom As Long
+    End Type
+
+    Private Type POINTAPI
+        X As Long
+        Y As Long
+    End Type
+
+    Private Type COLORMATRIX
+        M(0 To 4, 0 To 4)           As Single
+    End Type
+
+    Private Const SmoothingModeAntiAlias    As Long = 4
+    Private Const UnitPixel                 As Long = 2&
+    Private Const PixelFormat32bppPARGB     As Long = &HE200B
+    Private Const CombineModeIntersect      As Long = &H1
+
+    Private Const HWND_TOPMOST      As LongPtr = -1
+    Private Const SWP_NOSIZE        As Long = &H1
+    Private Const SWP_NOACTIVATE    As Long = &H10
+    Private Const SWP_SHOWWINDOW    As Long = &H40
+
+    Private Const DT_SINGLELINE     As Long = &H20
+    Private Const DT_VCENTER        As Long = &H4
+    Private Const DT_WORD_ELLIPSIS  As Long = &H40000
+    Private Const DT_CENTER         As Long = &H1
+    Private Const CLR_NONE          As Long = &HFFFFFFFF
+    Private Const DT_RIGHT          As Long = &H2
+    Private Const DT_CALCRECT       As Long = &H400
+
+    Private Const WM_TIMER          As Long = &H113
+    Private Const WM_HOTKEY         As Long = &H312
+    Private Const WM_MOUSELEAVE     As Long = &H2A3&
+    Private Const WM_MOUSEWHEEL     As Long = &H20A
+    Private Const WM_CHAR           As Long = &H102
+    Private Const WM_IME_SETCONTEXT As Long = &H281&
+    Private Const WM_NCDESTROY      As Long = &H82
+
+    Private Const WM_SETTEXT        As Long = &HC
+    Private Const WM_GETTEXT        As Long = &HD
+    Private Const WM_GETTEXTLENGTH  As Long = &HE
+    Private Const EM_SETSEL         As Long = &HB1
+
+    Private Const TME_LEAVE         As Long = &H2&
+    Private Const GA_ROOT           As Long = 2
+    Private Const TRANSPARENT_BK    As Long = 1
+    Private Const GMEM_MOVEABLE     As Long = &H2
+
+    ' Temporizadores internos (reemplazan a Timer1 y al autorepeat del scroll)
+    Private Const TIMER_MAIN        As Long = 1
+    Private Const TIMER_SCROLL      As Long = 2
+
+    ' uxtheme - SCROLLBAR
+    Private Const SBP_ARROWBTN          As Long = 1
+    Private Const SBP_THUMBBTNVERT      As Long = 3
+    Private Const SBP_LOWERTRACKVERT    As Long = 5
+    Private Const SBP_GRIPPERVERT       As Long = 9
+    Private Const ABS_UPNORMAL          As Long = 1
+    Private Const ABS_DOWNNORMAL        As Long = 5
+    Private Const DFC_SCROLL            As Long = 3
+    Private Const DFCS_SCROLLUP         As Long = &H0
+    Private Const DFCS_SCROLLDOWN       As Long = &H1
+    Private Const DFCS_PUSHED           As Long = &H200
+    Private Const EDGE_RAISED           As Long = &H5
+    Private Const BF_RECT_MIDDLE        As Long = &H80F
+
+    Private Type tItem
+        Text        As String
+        SubText     As String
+        Icon        As Long
+        Data        As Variant
+        Separator   As Boolean
+        Checked     As Boolean
+        IsChild     As Boolean
+        IsGroup     As Boolean
+        Disabled    As Boolean
+        Visible     As Boolean
+        SubMenu     As ucList
+        TextColor   As Long
+        SubTextColor As Long
+        BackColor   As Long
+        ItemBold    As Boolean
+    End Type
+
+    Public Enum eListDesign
+        GoogleDesign
+        MicrosoftDesign
+    End Enum
+
+    Public Enum eListStyle
+        StyleDropDown
+        StyleListBox
+        StyleMenu
+    End Enum
+
+    Public Enum eSortOrder
+        SortAscendant
+        SortDescendant
+    End Enum
+
+    Public Enum ListPlusOLEDropModeConstants
+        OLEDropModeNone = 0     'vbOLEDropNone
+        OLEDropModeManual = 1   'vbOLEDropManual
+    End Enum
+
+    '----------------------------------------------------------------------
+    ' Barra de desplazamiento interna (reemplaza a ucScrollbar)
+    '----------------------------------------------------------------------
+    Private Enum eSbPart
+        sbpNone = 0
+        sbpUpButton = 1
+        sbpDownButton = 2
+        sbpTrackUp = 3
+        sbpTrackDown = 4
+        sbpThumb = 5
+    End Enum
+
+    Private Enum eSbStyle
+        sCustomDraw = 0
+        sThemed = 1
+    End Enum
+
+    Private Type tScrollBar
+        Visible         As Boolean
+        Left            As Long
+        Top             As Long
+        Width           As Long
+        Height          As Long
+        Value           As Long
+        Max             As Long
+        SmallChange     As Long
+        LargeChange     As Long
+        WheelChange     As Long
+        ShowButtons     As Boolean
+        Style           As eSbStyle
+        HotPart         As eSbPart
+        PressedPart     As eSbPart
+        DragOffset      As Long
+        WheelEnabled    As Boolean
+        RepeatStarted   As Boolean
+    End Type
+
+    '======================================================================
+    ' Eventos (mismos que el control VB6 original)
+    '======================================================================
+    Public Event IndexChange()
+    Public Event ItemClick()
+    Public Event HideList()
+    Public Event ScrollBottom()
+    Public Event PostAutoComplete()
+    Public Event DblClick()
+    Public Event MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+    Public Event MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
+    Public Event MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
+    Public Event PostPaint(ByVal hdc As LongPtr)
+    Public Event ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long)
+    Public Event KeyPress(KeyAscii As Integer)
+    Public Event KeyUp(KeyCode As Integer, Shift As Integer)
+    Public Event KeyDown(KeyCode As Integer, Shift As Integer)
+    Public Event OLECompleteDrag(Effect As Long)
+    Public Event OLEDragDrop(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single)
+    Public Event OLEDragOver(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single, State As Integer)
+    Public Event OLEGiveFeedback(Effect As Long, DefaultCursors As Boolean)
+    Public Event OLESetData(Data As DataObject, DataFormat As Integer)
+    Public Event OLEStartDrag(Data As DataObject, AllowedEffects As Long)
+
+    '======================================================================
+    ' Variables
+    '======================================================================
+    Private m_ListStyle As eListStyle
+    Private m_SubTitleVisible As Boolean
+    Private m_ShowFilter As Boolean
+    Private m_ItemHeight As Long
+    Private m_MaxListHeight As Long
+    Private m_MaxVisibleItems As Long
+    Private m_ListWidth As Long
+    Private m_ListDesign As eListDesign
+    Private m_MultiSelect  As Boolean
+    Private m_UseMonocromeIcons As Boolean
+    Private m_BorderRadius As Long
+    Private m_BorderColor As OLE_COLOR
+    Private m_DrawSeparatorLine As Boolean
+    Private m_ImagesRadius As Long
+    Private m_SelectionRadius As Long
+    Private m_FindTextColor As OLE_COLOR
+    Private m_SelectionColor As OLE_COLOR
+    Private m_LineColor As OLE_COLOR
+    Private m_BorderVisible As Boolean
+    Private m_Left          As Long
+    Private m_Index         As Long
+    Private DpiFactor       As Single
+    Private cShadow         As ClsShadow
+    Private hRgn            As LongPtr
+    Private BR              As Long 'BorderRadius
+    Private m_Items()       As tItem
+    Private mListCount      As Long
+    Private SeparatorsCount As Long
+    Private m_HotItem       As Long
+    Private IH              As Long 'ItemHeight
+    Private GroupIsOpen     As Boolean
+    Private m_SegoeFont     As StdFont
+    Private m_Wingdings2    As StdFont
+    Private m_Wingdings3    As StdFont
+
+    Private ListHeight      As Long
+    Private ListTop         As Long
+    Private lHeadHeight     As Long
+    Private m_PhWnd         As LongPtr
+    Private hAnsestor       As LongPtr
+    Private bShow           As Boolean
+    Private lMargin         As Long
+    Private lCheckSize      As Long
+    Private bMouseDown      As Boolean
+    Private bFiltered       As Boolean
+    Private cImageList      As Collection
+    Private ImgLstWidth     As Long
+    Private ImgLstHeight    As Long
+    Private isSegoeFontInstaled As Boolean
+    Private PrevFocus       As LongPtr
+    Private bKillFocus      As Boolean
+    Private m_BtnTop        As Long
+    Private m_BtnLeft       As Long
+    Private isWinChild      As Boolean
+    Private bHasFocus       As Boolean
+    Private bHideSubMenu    As Boolean
+    Private bShowSubMenu    As Boolean
+    Private TickCount       As Long
+    Public ParentMenu       As ucList
+    Public ChildMenu        As ucList
+    Private SubMenuVisible  As Boolean
+    Private bTimerSkipRoutines As Boolean
+    Private VisibleItemsCount As Long
+    Private m_OffsetTextBox As RECT
+    Private WithEvents Frm  As Form
+    Private SrcTextBox      As LongPtr
+
+    ' Reemplazo de Timer1
+    Private m_TimerInterval As Long
+    Private m_TimerEnabled  As Boolean
+    Private m_TimerActive   As Long     'intervalo con el que esta corriendo (0 = parado)
+    Private m_TimerTag      As Long     'reemplaza a Timer1.Tag
+
+    ' Subclasificacion
+    Private m_hWndSubclassed As LongPtr
+    Private m_SrcSubclassed  As LongPtr
+
+    ' Barra de desplazamiento interna
+    Private SB              As tScrollBar
+
+    '======================================================================
+    ' Metodos publicos
+    '======================================================================
+    Public Sub SetKeyPress(KeyAscii As Integer)
+        Call UserControl_KeyPress(KeyAscii)
+    End Sub
+
+    Public Sub SetKeyDown(KeyCode As Integer)
+        Call Text1_KeyDown(KeyCode, 0)
+    End Sub
+
+    Public Function AutoCompleteTextBox(ByVal oTextBox As LongPtr, Optional ByVal OffsetLeft As Long, Optional ByVal OffsetTop As Long, Optional ByVal OffsetRight As Long, Optional ByVal OffsetBottom As Long)
+
+        If m_SrcSubclassed <> 0 Then
+            UCL_UnsubclassList m_SrcSubclassed, ObjPtr(Me) + 1
+            m_SrcSubclassed = 0
+        End If
+
+        SrcTextBox = oTextBox
+
+        If oTextBox = 0 Then Exit Function
+
+        Text1.Text = vbNullString
+
+        SetRect m_OffsetTextBox, OffsetLeft, OffsetTop, OffsetRight, OffsetBottom
+        If UCL_SubclassList(SrcTextBox, ObjPtr(Me) + 1, ObjPtr(Me)) Then
+            m_SrcSubclassed = SrcTextBox
+        End If
+    End Function
+
+    Private Sub SrcTextBox_Change()
+        Dim tR As RECT, i As Long
+        Dim bFound As Boolean
+
+        If bTimerSkipRoutines Then Exit Sub
+
+        GetWindowRect SrcTextBox, tR
+        If bShow = False Then
+            For i = 0 To mListCount - 1
+                If Not m_Items(i).IsGroup Then
+                    If InStr(UCase$(m_Items(i).Text), UCase$(TextBox_GetText(SrcTextBox))) Then
+                        With m_OffsetTextBox
+                            Me.ListWidth = ((tR.Right + .Right) - (tR.Left + .Left)) / DpiFactor
+                            ShowList tR.Left + .Left, tR.Bottom + .Top, 0, tR.Top + .Bottom
+                        End With
+                        bFound = True
+                        Exit For
+                    End If
+                End If
+            Next
+            If Not bFound Then Exit Sub
+        Else
+            If Len(TextBox_GetText(SrcTextBox)) = 0 Then HideList
+        End If
+
+        'Filtro
+        Text1.Text = TextBox_GetText(SrcTextBox)
+        If VisibleItemsCount = 0 Then
+            HideList
+        End If
+    End Sub
+
+    Public Sub AddSubMenu(SubMenuTitle As String, GList As ucList, Optional ByVal Icon As Long = -1, Optional ByVal ItemData As Variant)
+        ReDim Preserve m_Items(mListCount)
+
+        With m_Items(mListCount)
+            .Text = SubMenuTitle
+            .Icon = Icon
+            .Data = ItemData
+            .Visible = True
+            .TextColor = CLR_NONE
+            .SubTextColor = CLR_NONE
+            .BackColor = CLR_NONE
+            Set .SubMenu = GList
+        End With
+
+        mListCount = mListCount + 1
+
+    End Sub
+
+    Public Sub OpenGroup(GropuTitle As String, Optional ByVal Icon As Long = -1, Optional ByVal ItemData As Variant)
+        ReDim Preserve m_Items(mListCount)
+
+        With m_Items(mListCount)
+            .Text = GropuTitle
+            .Icon = Icon
+            .Data = ItemData
+            .IsGroup = True
+            .Visible = True
+            .TextColor = CLR_NONE
+            .SubTextColor = CLR_NONE
+            .BackColor = CLR_NONE
+        End With
+
+        mListCount = mListCount + 1
+        GroupIsOpen = True
+    End Sub
+
+    Public Sub CloseGroup()
+        GroupIsOpen = False
+    End Sub
+
+    Public Function RemoveItem(Index As Long)
+        Dim i As Long
+        If Index < 0 Or Index > mListCount - 1 Then Exit Function
+        If m_Items(Index).Separator Then SeparatorsCount = SeparatorsCount - 1
+        If m_Index = Index Then m_Index = m_Index - 1
+        mListCount = mListCount - 1
+
+        For i = Index To mListCount - 1
+            m_Items(i) = m_Items(i + 1)
+        Next
+
+        If mListCount > 0 Then
+            ReDim Preserve m_Items(mListCount - 1)
+        Else
+            ReDim m_Items(0)
+        End If
+    End Function
+
+    Public Function AddItem(Optional ByVal Text As String, Optional ByVal Icon As Long = -1, Optional ByVal ItemData As Variant, Optional ByVal SubText As String, Optional Checked As Boolean, Optional Disabled As Boolean, Optional ByVal Index As Long = -1)
+        Dim i As Long
+        ReDim Preserve m_Items(mListCount)
+
+        If Index > -1 Then
+            If Index > mListCount Then
+                Index = mListCount
+            Else
+                For i = mListCount To Index + 1 Step -1
+                    m_Items(i) = m_Items(i - 1)
+                Next
+            End If
+        Else
+            Index = mListCount
+        End If
+
+        With m_Items(Index)
+            .Text = Text
+            .Icon = Icon
+            .Data = ItemData
+            .SubText = SubText
+            .Separator = (Text = "-")
+            .Checked = Checked
+            .IsChild = GroupIsOpen
+            .IsGroup = False
+            .Disabled = Disabled
+            .Visible = True
+            .TextColor = CLR_NONE
+            .SubTextColor = CLR_NONE
+            .BackColor = CLR_NONE
+            .ItemBold = False
+            Set .SubMenu = Nothing
+            If .Separator Then SeparatorsCount = SeparatorsCount + 1
+            mListCount = mListCount + 1
+        End With
+    End Function
+
+    Public Function GetItemTop(ByVal Index As Long) As Long
+        Dim i As Long, lTop As Long
+
+        If m_ShowFilter Then
+            Text1.Height = UserControl.Font.Size * 1.5 * DpiFactor
+            lTop = Text1.Height + lMargin * 4
+        Else
+            lTop = lMargin
+        End If
+
+        lTop = lTop - SB.Value
+
+        If Index < 0 Or Index > mListCount - 1 Then
+            GetItemTop = lTop
+            Exit Function
+        End If
+
+        For i = 0 To mListCount - 1
+            With m_Items(i)
+                If Index = i Then
+                    GetItemTop = lTop
+                    Exit Function
+                End If
+                If .Separator Then
+                    lTop = lTop + IH / 2
+                Else
+                    lTop = lTop + IH
+                End If
+            End With
+        Next
+    End Function
+
+    '======================================================================
+    ' Dibujo
+    '======================================================================
+    Private Sub SetFore(ByVal Color As Long)
+        UserControl.ForeColor = Color
+        SetTextColor UserControl.hDC, TranslateColor(Color)
+    End Sub
+
+    Private Sub SyncFont()
+        ' Asegura que la fuente actual del control esta seleccionada en el lHdc
+        Dim oFont As IFont
+        Set oFont = UserControl.Font
+        SelectObject UserControl.hDC, oFont.hFont
+    End Sub
+
+    Private Sub Draw()
+        Dim i As Long
+        Dim lTop As Long, lLeft As Long
+        Dim rc As RECT
+        Dim lWidth As Long
+        Dim TextHeight As Long
+        Dim oColor As Long
+        Dim HotItembckColor As Long
+        Dim HighlightTextColor As Long
+        Dim NormalTextColor As Long
+        Dim mFontSize As Single
+        Dim sText As String, sShortcut As String
+        Dim lPos As Long
+        Dim PrevForeColor As Long
+        Dim TempStr As String, TempRect As RECT
+        Dim lHdc As LongPtr
+
+        UserControl.Cls
+        lHdc = UserControl.hDC
+        SetBkMode lHdc, TRANSPARENT_BK
+        SyncFont
+
+        If IsDarkColor(m_SelectionColor) Then
+            HighlightTextColor = vbWhite
+        Else
+            HighlightTextColor = vbBlack
+        End If
+
+        If IsDarkColor(UserControl.BackColor) Then
+            HotItembckColor = ShiftColor(UserControl.BackColor, vbWhite, 200)
+            NormalTextColor = vbWhite
+        Else
+            HotItembckColor = ShiftColor(UserControl.BackColor, vbBlack, 240)
+            NormalTextColor = vbBlack
+        End If
+
+        m_LineColor = ShiftColor(NormalTextColor, UserControl.BackColor, 50)
+
+        TextHeight = UserControl.TextHeight(ChrW$(192) & "j")
+
+        lWidth = UserControl.ScaleWidth
+        If SB.Visible Then
+            lWidth = SB.Left - 2 * DpiFactor
+        Else
+            If m_SelectionRadius > 0 Then
+                lWidth = lWidth - lMargin
+                lLeft = lMargin
+            End If
+        End If
+
+        lTop = ListTop - SB.Value
+
+        For i = 0 To mListCount - 1
+            With m_Items(i)
+                If .Visible Then
+                    If lTop + IH > 0 Then
+
+                        SetRect rc, 0, lTop, lWidth, lTop + IH
+
+                        If i = m_HotItem Or i = m_Index Then
+                            If bMouseDown Or i = m_Index Then
+                                oColor = m_SelectionColor
+                            Else
+                                If .BackColor <> CLR_NONE Then
+                                    If IsDarkColor(.BackColor) Then
+                                        oColor = ShiftColor(.BackColor, vbWhite, 150)
+                                    Else
+                                        oColor = ShiftColor(.BackColor, vbBlack, 200)
+                                    End If
+                                Else
+                                    oColor = HotItembckColor
+                                End If
+                            End If
+
+                            If m_SelectionRadius = 0 Then
+                                FillRectangle lHdc, rc, oColor
+                            Else
+                                RoundRectPlus lHdc, rc.Left + lMargin / 2, rc.Top, _
+                                    rc.Right - rc.Left - lMargin / 2, rc.Bottom - rc.Top, _
+                                    RGBtoARGB(oColor, 100), 0, m_SelectionRadius * DpiFactor
+                            End If
+                        Else
+                            If .BackColor <> CLR_NONE Then
+                                FillRectangle lHdc, rc, .BackColor
+                            End If
+                        End If
+
+                        If .Separator Then
+                            DrawLine lHdc, lLeft, lTop + IH / 4, lWidth, lTop + IH / 4, m_LineColor
+                            lTop = lTop + IH / 2
+                        Else
+
+                            If .TextColor <> CLR_NONE Then
+                                SetFore .TextColor
+                            Else
+                                If .Disabled Then
+                                    SetFore ShiftColor(NormalTextColor, UserControl.BackColor, 120)
+                                Else
+                                    If (i = m_HotItem And bMouseDown) Or i = m_Index Then
+                                        SetFore HighlightTextColor
+                                    Else
+                                        SetFore NormalTextColor
+                                    End If
+                                End If
+                            End If
+
+                            If Not .SubMenu Is Nothing Then
+                                DrawArrow lHdc, (i = m_HotItem And bMouseDown) Or i = m_Index, rc.Right - lCheckSize, lTop + IH / 2 - lCheckSize / 2, rc.Right, lTop + IH / 2 + lCheckSize / 2
+                            End If
+
+                            If m_UseMonocromeIcons Then
+                                oColor = UserControl.ForeColor
+                            Else
+                                oColor = CLR_NONE
+                            End If
+
+                            If m_DrawSeparatorLine Then
+                                DrawLine lHdc, 0, lTop + IH, lWidth, lTop + IH, m_LineColor
+                            End If
+
+                            If .IsGroup Then
+
+                                rc.Left = lMargin * 2
+
+                                If cImageList.Count > 0 And .Icon > -1 Then
+                                    ImageListDraw lHdc, .Icon + 1, rc.Left, lTop + IH / 2 - ImgLstHeight / 2, ImgLstWidth, ImgLstHeight, oColor, .Disabled
+                                    rc.Left = rc.Left + ImgLstWidth + lMargin
+                                End If
+
+                                UserControl.FontBold = True
+                                SyncFont
+                                DrawText lHdc, StrPtr(.Text), -1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_WORD_ELLIPSIS
+                                UserControl.FontBold = False
+                                SyncFont
+                                RaiseEvent ItemCustomDraw(i, hDC, 0, lTop, lWidth, IH)
+                            Else
+                                rc.Left = lMargin * 2
+                                If .IsChild Then rc.Left = rc.Left + lMargin * 2
+
+                                If m_MultiSelect Then
+                                    If .SubMenu Is Nothing Then
+                                        DrawCheckBox lHdc, .Checked, (i = m_HotItem And bMouseDown) Or i = m_Index, rc.Left, lTop + IH / 2 - lCheckSize / 2, rc.Left + lCheckSize, lTop + IH / 2 + lCheckSize / 2
+                                    End If
+                                    rc.Left = rc.Left + lCheckSize + lMargin
+                                End If
+
+                                If cImageList.Count > 0 Then
+                                    If .Icon > -1 Then ImageListDraw lHdc, .Icon + 1, rc.Left, lTop + IH / 2 - ImgLstHeight / 2, ImgLstWidth, ImgLstHeight, oColor, .Disabled
+                                    rc.Left = rc.Left + ImgLstWidth + lMargin
+                                End If
+
+                                lPos = InStr(.Text, vbTab)
+                                If lPos Then
+                                    sText = Left$(.Text, lPos)
+                                    sShortcut = Mid$(.Text, lPos)
+                                Else
+                                    sText = .Text
+                                End If
+
+                                rc.Right = rc.Right - lMargin - lCheckSize / 2
+                                If Len(.SubText) > 0 And m_SubTitleVisible Then
+                                    rc.Bottom = rc.Bottom - TextHeight
+                                    DrawText lHdc, StrPtr(sText), -1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_WORD_ELLIPSIS
+
+                                    If .SubTextColor <> CLR_NONE Then
+                                        SetFore .SubTextColor
+                                    Else
+                                        If i <> m_Index Then SetFore ShiftColor(UserControl.ForeColor, UserControl.BackColor, 120)
+                                    End If
+                                    If lPos Then DrawText lHdc, StrPtr(sShortcut), -1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_RIGHT
+                                    rc.Bottom = rc.Bottom + TextHeight * 2
+
+                                    mFontSize = UserControl.Font.Size
+                                    UserControl.Font.Size = mFontSize - 1
+                                    SyncFont
+                                    DrawText lHdc, StrPtr(.SubText), -1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_WORD_ELLIPSIS
+                                    UserControl.Font.Size = mFontSize
+                                    SyncFont
+                                Else
+                                    If .ItemBold Then UserControl.FontBold = True: SyncFont
+                                    DrawText lHdc, StrPtr(sText), -1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_WORD_ELLIPSIS
+                                    If lPos Then
+                                        PrevForeColor = UserControl.ForeColor
+                                        If .SubTextColor <> CLR_NONE Then
+                                            SetFore .SubTextColor
+                                        Else
+                                            SetFore ShiftColor(PrevForeColor, UserControl.BackColor, 120)
+                                        End If
+                                        DrawText lHdc, StrPtr(sShortcut), -1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_RIGHT
+                                        SetFore PrevForeColor
+                                    End If
+
+                                    If Len(Text1.Text) > 0 And i <> m_Index Then
+                                        lPos = InStr(UCase$(sText), UCase$(Text1.Text))
+
+                                        If lPos Then
+                                            TempStr = Left$(sText, lPos - 1)
+                                            SetFore m_FindTextColor
+                                            TempRect = rc
+                                            DrawText lHdc, StrPtr(TempStr), -1, TempRect, DT_SINGLELINE Or DT_VCENTER Or DT_CALCRECT
+
+                                            TempStr = Mid$(sText, lPos, Len(Text1.Text))
+                                            rc.Left = rc.Left + TempRect.Right - TempRect.Left
+                                            DrawText lHdc, StrPtr(TempStr), -1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_WORD_ELLIPSIS
+                                        End If
+                                    End If
+                                    If .ItemBold Then UserControl.FontBold = False: SyncFont
+                                End If
+
+                            End If
+                            RaiseEvent ItemCustomDraw(i, hDC, 0, lTop, lWidth, IH)
+                            lTop = lTop + IH
+
+                        End If
+                    Else
+                        If .Separator Then
+                            lTop = lTop + IH / 2
+                        Else
+                            lTop = lTop + IH
+                        End If
+                    End If
+                End If
+
+                If lTop > UserControl.ScaleHeight Then Exit For
+            End With
+        Next
+
+        'Header
+        SetRect rc, 0, 0, UserControl.ScaleWidth, ListTop
+        FillRectangle lHdc, rc, UserControl.BackColor
+        'optional
+        If SB.Value > 0 Then
+            SetRect rc, 0, ListTop, UserControl.ScaleWidth, lMargin / 2
+            FillRectGradient lHdc, rc, RGBtoARGB(UserControl.BackColor, 100), 0
+        End If
+
+        'Footer
+        SetRect rc, 0, UserControl.ScaleHeight - lMargin, UserControl.ScaleWidth, UserControl.ScaleHeight
+        FillRectangle lHdc, rc, UserControl.BackColor
+        'optional
+        If SB.Value < SB.Max Then
+            SetRect rc, 0, UserControl.ScaleHeight - lMargin * 1.5, UserControl.ScaleWidth, lMargin / 2
+            FillRectGradient lHdc, rc, 0, RGBtoARGB(UserControl.BackColor, 100)
+        End If
+
+        If m_ShowFilter Then
+            If isSegoeFontInstaled Then
+                RoundRectPlus lHdc, Text1.Left - lMargin, Text1.Top - lMargin, Text1.Width + lMargin * 2 + lCheckSize, Text1.Height + lMargin * 2, RGBtoARGB(UserControl.BackColor, 100), RGBtoARGB(m_SelectionColor, 100), BR / 2
+                SetRect rc, Text1.Left + Text1.Width, Text1.Top - lMargin, UserControl.ScaleWidth, Text1.Top + Text1.Height + lMargin
+                DrawGlass lHdc, rc, NormalTextColor
+            Else
+                RoundRectPlus lHdc, Text1.Left - lMargin, Text1.Top - lMargin, Text1.Width + lMargin * 2 + lCheckSize, Text1.Height + lMargin * 2, RGBtoARGB(UserControl.BackColor, 100), RGBtoARGB(m_SelectionColor, 100), BR / 2
+            End If
+        End If
+
+        ' Barra de desplazamiento (antes era un control aparte)
+        SB_Paint lHdc
+
+        RaiseEvent PostPaint(hDC)
+
+        UserControl.Refresh
+    End Sub
+
+    ' Icono que se muestra en tiempo de diseno para los estilos DropDown/Menu
+    ' (en VB6 era la imagen guardada en ucList.ctx)
+    Private Sub DrawDesignIcon()
+        Dim rc As RECT, i As Long, lW As Long, lH As Long
+        Dim lHdc As LongPtr
+
+        If cShadow Is Nothing Then Exit Sub
+        UserControl.Cls
+        lHdc = UserControl.hDC
+        lW = UserControl.ScaleWidth
+        lH = UserControl.ScaleHeight
+        RoundRectPlus lHdc, 1, 1, lW - 3, lH - 3, RGBtoARGB(vbWindowBackground, 100), RGBtoARGB(vbActiveBorder, 100), 6
+        For i = 0 To 2
+            SetRect rc, 6, 6 + i * ((lH - 12) \ 3), lW - 6, 6 + i * ((lH - 12) \ 3) + ((lH - 12) \ 3) - 3
+            If i = 1 Then
+                FillRectangle lHdc, rc, vbHighlight
+            Else
+                FillRectangle lHdc, rc, ShiftColor(vbWindowText, vbWindowBackground, 60)
+            End If
+        Next
+        UserControl.Refresh
+    End Sub
+
+    Private Sub FillRectGradient(ByVal lHdc As LongPtr, ByRef rc As RECT, ByVal Color1 As Long, ByVal Color2 As Long)
+        Dim hBrush As LongPtr, hGraphics As LongPtr
+        If rc.Bottom <= 0 Or rc.Right <= 0 Then Exit Sub
+        GdipCreateFromHDC lHdc, hGraphics
+        GdipCreateLineBrushFromRectWithAngleI rc, Color1, Color2, 90, 0, &H3, hBrush
+        GdipFillRectangleI hGraphics, hBrush, rc.Left, rc.Top, rc.Right, rc.Bottom
+        GdipDeleteBrush hBrush
+        GdipDeleteGraphics hGraphics
+    End Sub
+
+    Private Sub FillRectangle(ByVal lHdc As LongPtr, ByRef rc As RECT, ByVal Color As Long)
+        Dim hBrush As LongPtr
+        hBrush = CreateSolidBrush(TranslateColor(Color))
+        FillRect lHdc, rc, hBrush
+        Call DeleteObject(hBrush)
+    End Sub
+
+    Private Sub DrawGlass(ByVal lHdc As LongPtr, ByRef rc As RECT, ByVal Color As Long)
+        Dim oFont As IFont
+        Dim hPrevFont As LongPtr
+        Dim PrevForeColor As Long
+
+        Set oFont = m_SegoeFont
+        m_SegoeFont.Size = 18 / 1.5
+        hPrevFont = SelectObject(lHdc, oFont.hFont)
+        PrevForeColor = UserControl.ForeColor
+        SetFore Color
+        DrawText lHdc, StrPtr(ChrW2(&HE094)), 1, rc, DT_SINGLELINE Or DT_VCENTER
+        Call SelectObject(lHdc, hPrevFont)
+        SetFore PrevForeColor
+    End Sub
+
+    Private Sub DrawArrow(ByVal lHdc As LongPtr, ByVal bHighlight As Boolean, ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long)
+        Dim oFont As IFont
+        Dim hPrevFont As LongPtr
+        Dim rc As RECT
+        Dim sChr As String
+
+        If isSegoeFontInstaled Then
+            m_SegoeFont.Size = UserControl.Font.Size
+            Set oFont = m_SegoeFont
+            sChr = ChrW2(&HE970)
+        Else
+            m_Wingdings3.Size = UserControl.Font.Size
+            Set oFont = m_Wingdings3
+            sChr = ChrW2(&H7D)
+        End If
+
+        hPrevFont = SelectObject(lHdc, oFont.hFont)
+        SetRect rc, X1, Y1, X2, Y2
+        DrawText lHdc, StrPtr(sChr), 1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_CENTER
+        Call SelectObject(lHdc, hPrevFont)
+
+    End Sub
+
+    Private Sub DrawCheckBox(ByVal lHdc As LongPtr, ByVal Value As Boolean, ByVal bHighlight As Boolean, ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long)
+        Dim oFont As IFont
+        Dim hPrevFont As LongPtr
+        Dim rc As RECT
+        Dim PrevForeColor As Long
+        Dim sChr As String
+
+        PrevForeColor = UserControl.ForeColor
+
+        If isSegoeFontInstaled Then
+            m_SegoeFont.Size = 12
+            Set oFont = m_SegoeFont
+            If Value Then
+                If bHighlight = False Then SetFore m_SelectionColor
+                sChr = ChrW2(&HE005)
+            Else
+                sChr = ChrW2(&HE003)
+            End If
+        Else
+            m_Wingdings2.Size = 14
+            Set oFont = m_Wingdings2
+            If Value Then
+                If bHighlight = False Then SetFore m_SelectionColor
+                sChr = ChrW2(&H52)
+            Else
+                sChr = ChrW2(&HA3)
+            End If
+        End If
+
+        SetRect rc, X1, Y1, X2, Y2
+        hPrevFont = SelectObject(lHdc, oFont.hFont)
+        DrawText lHdc, StrPtr(sChr), 1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_CENTER
+        SetFore PrevForeColor
+        Call SelectObject(lHdc, hPrevFont)
+
+    End Sub
+
+    Public Function GetWindowDpi() As Single
+        GetWindowDpi = DpiFactor
+    End Function
+
+    Public Function ChrW2(ByVal CharCode As Long) As String
+        Const POW10 As Long = 2 ^ 10
+        If CharCode <= &HFFFF& Then
+            ChrW2 = ChrW$(CharCode)
+        Else
+            ChrW2 = ChrW$(&HD800& + (CharCode And &HFFFF&) \ POW10) & _
+                    ChrW$(&HDC00& + (CharCode And (POW10 - 1)))
+        End If
+    End Function
+
+    '======================================================================
+    ' Mostrar / ocultar la lista desplegable
+    '======================================================================
+    Public Sub ShowList(Left As Long, Top As Long, Optional BtnLeft As Long, Optional BtnTop As Long)
+        Dim i As Long, WinHeight As Long
+        Dim ScreenHeight As Long, ScreenWidth As Long
+        Dim oCtl As Object
+
+        If isWinChild Then Exit Sub
+        If bShow Then HideList
+
+        EnsureSubclass
+
+        bHideSubMenu = False
+        bShowSubMenu = False
+        m_TimerTag = -1
+        m_HotItem = -1
+        bKillFocus = False
+        m_BtnTop = 0
+        m_BtnLeft = 0
+
+        PrevFocus = GetFocus
+        m_PhWnd = UserControl.ContainerHwnd
+        hAnsestor = GetAncestor(m_PhWnd, GA_ROOT)
+        If SrcTextBox = 0 Then
+            PutFocus UserControl.hWnd
+        End If
+        Text1.Text = vbNullString
+
+        On Error Resume Next '---------Busca el formulario para capturar los eventos Unload y Resize
+            Set oCtl = UserControl.Extender.Container
+            Do
+                If TypeOf oCtl Is Form Then
+                    Set Frm = oCtl
+                    Exit Do
+                Else
+                    Set oCtl = oCtl.Parent
+                    If Err.Number Then Exit Do
+                End If
+            Loop
+        On Error GoTo 0 '----------------
+
+        If m_ShowFilter Then
+            Set Text1.Font = UserControl.Font
+            Text1.Visible = True
+            PutFocus Text1.hWnd
+            Text1.Height = UserControl.Font.Size * 1.5 * DpiFactor
+            lHeadHeight = Text1.Height + lMargin * 4
+            Text1.BackColor = UserControl.BackColor
+            If IsDarkColor(Text1.BackColor) Then
+                Text1.ForeColor = vbWhite
+            Else
+                Text1.ForeColor = vbBlack
+            End If
+        Else
+            Text1.Visible = False
+            lHeadHeight = lMargin
+        End If
+
+        ScreenHeight = Screen.Height / Screen.TwipsPerPixelY
+        ScreenWidth = Screen.Width / Screen.TwipsPerPixelX
+
+        Call RegisterHotsKeys
+
+        WinHeight = lHeadHeight + lMargin '< footer
+
+        For i = 0 To mListCount - 1 'Calcula el alto
+            With m_Items(i)
+                If .Separator Then
+                    WinHeight = WinHeight + IH / 2
+                Else
+                    WinHeight = WinHeight + IH
+                End If
+                If WinHeight > ScreenHeight Then
+                    WinHeight = ScreenHeight
+                    Exit For
+                End If
+            End With
+        Next
+
+        If m_MaxVisibleItems > 0 Then
+            m_MaxListHeight = (lHeadHeight + IH * m_MaxVisibleItems + lMargin)
+        End If
+
+        '---
+        If m_MaxListHeight > 0 Then If WinHeight > m_MaxListHeight Then WinHeight = m_MaxListHeight
+        If Top + WinHeight > ScreenHeight Then
+            If BtnTop > 0 Then
+                m_BtnTop = BtnTop
+                Top = (m_BtnTop - WinHeight)
+            Else
+                Top = (ScreenHeight - WinHeight)
+            End If
+        End If
+        If Top < 0 Then Top = 0
+
+        '----
+        If Left + (m_ListWidth * DpiFactor) > ScreenWidth Then
+            If BtnLeft > 0 Then
+                m_BtnLeft = BtnLeft
+                Left = BtnLeft - (m_ListWidth * DpiFactor)
+            Else
+                Left = ScreenWidth - (m_ListWidth * DpiFactor)
+            End If
+        End If
+        If Left < 0 Then Left = 0
+        '----
+
+        m_Left = Left
+        SetParent UserControl.hWnd, 0
+        SetWindowPos UserControl.hWnd, HWND_TOPMOST, Left, Top, m_ListWidth * DpiFactor, WinHeight, SWP_NOACTIVATE Or SWP_SHOWWINDOW
+        PutFocus UserControl.hWnd
+
+        If m_ShowFilter Then
+            Text1.Move lMargin * 2, lMargin * 2, UserControl.ScaleWidth - lMargin * 4 - 16 * DpiFactor
+        End If
+
+        ListTop = lHeadHeight
+        ListHeight = UserControl.ScaleHeight - lHeadHeight - lMargin
+
+        SB_ApplyDesign
+        SB_SetMax IH * (mListCount - SeparatorsCount) + (IH / 2) * SeparatorsCount - ListHeight
+
+        If SB.Max > 0 Then
+            SB.SmallChange = IH * 3
+            ' Sugerencia de JB
+            SB.LargeChange = ListHeight - IH
+            ' Fin Sugerencia de JB
+            SB.WheelChange = IH * 3
+            SB.WheelEnabled = True
+            SB.Visible = True
+        Else
+            SB.WheelEnabled = False
+            SB.Visible = False
+        End If
+
+        UserControl_Resize
+        cShadow.BackColor = UserControl.BackColor
+        If m_BorderVisible Then
+            cShadow.ShowBorders UserControl.hWnd, isWinChild
+        End If
+
+        If m_Index > -1 Then FocusItem m_Index
+
+        Call Draw
+
+        'si ShowList se llama en MouseDown, espera al MouseUp
+        If (GetAsyncKeyState(vbLeftButton) < 0) Or (GetAsyncKeyState(vbRightButton) < 0) Then
+            DoEvents
+            Do While (GetAsyncKeyState(vbLeftButton) < 0) Or (GetAsyncKeyState(vbRightButton) < 0)
+            Loop
+        End If
+
+        Timer1_SetInterval 1
+        bShow = True
+    End Sub
+
+    Public Sub HideList()
+        If bShow = False Then Exit Sub
+        bShow = False
+
+        Set Frm = Nothing
+
+        If Not ChildMenu Is Nothing Then
+            ChildMenu.HideList
+            Set ChildMenu.ParentMenu = Nothing
+
+            Set ChildMenu = Nothing
+        End If
+
+        Timer1_SetInterval 0
+        SB_StopRepeat
+
+        Call UnRegisterHotsKeys
+
+        hAnsestor = 0
+
+        ShowWindow UserControl.hWnd, 0
+        SetParent UserControl.hWnd, m_PhWnd
+
+        cShadow.HideBorders
+
+        If Not ParentMenu Is Nothing Then
+            ParentMenu.HideList
+            Set ParentMenu = Nothing
+        End If
+        RaiseEvent HideList
+    End Sub
+
+    Friend Sub UnRegisterHotsKeys()
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyDown)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyUp)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyReturn)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyEscape)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyHome)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyEnd)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyPageUp)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyPageDown)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyTab)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyLeft)
+        Call UnregisterHotKey(UserControl.hWnd, vbKeyRight)
+    End Sub
+
+    Friend Sub RegisterHotsKeys()
+        Call RegisterHotKey(UserControl.hWnd, vbKeyDown, 0, vbKeyDown)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyUp, 0, vbKeyUp)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyReturn, 0, vbKeyReturn)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyEscape, 0, vbKeyEscape)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyHome, 0, vbKeyHome)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyEnd, 0, vbKeyEnd)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyPageUp, 0, vbKeyPageUp)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyPageDown, 0, vbKeyPageDown)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyTab, 0, vbKeyTab)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyLeft, 0, vbKeyLeft)
+        Call RegisterHotKey(UserControl.hWnd, vbKeyRight, 0, vbKeyRight)
+    End Sub
+
+    Private Sub DrawLine(ByVal lpDC As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal X2 As Long, ByVal Y2 As Long, ByVal Color As Long)
+        Dim PT      As POINTAPI
+        Dim hPen    As LongPtr
+        Dim hPenOld As LongPtr
+
+        hPen = CreatePen(0, 1, TranslateColor(Color))
+        hPenOld = SelectObject(lpDC, hPen)
+        Call MoveToEx(lpDC, X, Y, PT)
+        Call LineTo(lpDC, X2, Y2)
+        Call SelectObject(lpDC, hPenOld)
+        Call DeleteObject(hPen)
+    End Sub
+
+    Private Sub Frm_Resize()
+        HideList
+    End Sub
+
+    Private Sub Frm_Unload(Cancel As Integer)
+        HideList
+    End Sub
+
+    '======================================================================
+    ' Filtro (Text1)
+    '======================================================================
+    Private Sub Text1_Change()
+        Dim i As Long
+        Dim lHeight As Long
+        Dim ParentIndex As Long
+        Dim lWidth As Long
+
+        bFiltered = Len(Text1.Text) > 0
+        m_Index = -1
+
+        VisibleItemsCount = 0
+        For i = 0 To mListCount - 1
+            With m_Items(i)
+                If .IsGroup Then
+                    .Visible = False
+                    ParentIndex = i
+                Else
+                    If InStr(UCase$(.Text), UCase$(Text1.Text)) Then
+
+                        lHeight = lHeight + IH
+
+                        If .IsChild And m_Items(ParentIndex).Visible = False Then
+                            m_Items(ParentIndex).Visible = True
+                            lHeight = lHeight + IH
+                        End If
+                        .Visible = True
+                        VisibleItemsCount = VisibleItemsCount + 1
+                    Else
+                        .Visible = False
+                    End If
+                End If
+            End With
+        Next
+
+        If isWinChild Then
+            If lHeight < SB.Height Then
+                SB.Visible = False
+                SB.WheelEnabled = False
+                SB.Value = 0
+            Else
+                SB.Value = 0
+                SB_SetMax lHeight - SB.Height
+                SB.SmallChange = IH
+                SB.LargeChange = ListHeight - IH
+                SB.Visible = True
+                SB.WheelEnabled = True
+            End If
+            Draw
+            Exit Sub
+        End If
+
+        lWidth = m_ListWidth * Screen.TwipsPerPixelX * DpiFactor
+
+        If lHeight <= SB.Height Then
+            UserControl.Size lWidth, (lHeadHeight + lHeight + lMargin) * Screen.TwipsPerPixelY
+            SB.Visible = False
+            SB.WheelEnabled = False
+        Else
+            If (ListTop + lHeight + lMargin) > m_MaxListHeight And m_MaxListHeight > 0 Then
+                UserControl.Size lWidth, m_MaxListHeight * Screen.TwipsPerPixelY
+            Else
+                UserControl.Size lWidth, ListHeight * Screen.TwipsPerPixelY
+            End If
+
+            SB.Value = 0
+            SB_SetMax lHeight - SB.Height
+            SB.SmallChange = IH
+            SB.LargeChange = ListHeight - IH
+            SB.Visible = True
+            SB.WheelEnabled = True
+        End If
+
+        If m_BtnTop > 0 Then
+            SetWindowPos UserControl.hWnd, HWND_TOPMOST, m_Left, (m_BtnTop * DpiFactor) - UserControl.ScaleHeight, 0, 0, SWP_NOACTIVATE Or SWP_SHOWWINDOW Or SWP_NOSIZE
+        End If
+        bKillFocus = False
+        If m_BorderVisible Then cShadow.Refresh
+
+        If SB.Value > 0 Then
+            SB_SetValue 0, False
+        Else
+            Draw
+        End If
+    End Sub
+
+    Private Sub FocusItem(ByVal Index As Long)
+        Dim i As Long
+        Dim mHeight As Long
+
+        For i = 0 To mListCount - 1
+            If m_Items(i).Visible Then
+                If Not m_Items(i).Separator Then
+                    mHeight = mHeight + IH
+                Else
+                    mHeight = mHeight + IH / 2
+                End If
+                If Index = i Then
+                    If mHeight + IH > SB.Value + ListHeight Then
+                        SB_SetValue mHeight - ListHeight, False
+                    ElseIf mHeight - IH < SB.Value Then
+                        SB_SetValue mHeight - IH, False
+                    End If
+                    Draw
+                    Exit For
+                End If
+            End If
+        Next
+    End Sub
+
+    Private Function IsItemSelectable(ByVal Index As Long) As Boolean
+        If Index < 0 Or Index > mListCount - 1 Then Exit Function
+        If m_Items(Index).Visible And Not m_Items(Index).Disabled And _
+            Not m_Items(Index).IsGroup And Not m_Items(Index).Separator Then
+            IsItemSelectable = True
+        End If
+    End Function
+
+    Private Sub Text1_KeyDown(KeyCode As Integer, Shift As Integer)
+        Dim i As Long
+        Dim ItemPerPage As Long
+        Dim sText As String
+        Dim tR As RECT
+
+        Select Case KeyCode
+            Case vbKeyUp
+                KeyCode = 0
+                For i = m_Index - 1 To 0 Step -1
+                    If IsItemSelectable(i) Then
+                        m_Index = i
+                        FocusItem m_Index
+                        RaiseEvent IndexChange
+                        Exit For
+                    End If
+                Next
+
+            Case vbKeyDown
+                KeyCode = 0
+                For i = m_Index + 1 To mListCount - 1
+                    If IsItemSelectable(i) Then
+                        m_Index = i
+                        FocusItem m_Index
+                        RaiseEvent IndexChange
+                        Exit For
+                    End If
+                Next
+
+            Case vbKeyHome
+                KeyCode = 0
+                For i = 0 To mListCount - 1
+                    If IsItemSelectable(i) Then
+                        m_Index = i
+                        FocusItem m_Index
+                        RaiseEvent IndexChange
+                        Exit For
+                    End If
+                Next
+
+            Case vbKeyEnd
+                KeyCode = 0
+                For i = mListCount - 1 To 0 Step -1
+                    If IsItemSelectable(i) Then
+                        m_Index = i
+                        FocusItem m_Index
+                        RaiseEvent IndexChange
+                        Exit For
+                    End If
+                Next
+
+            Case vbKeyEscape
+                If Not isWinChild Then
+                    KeyCode = 0
+                    If Not ParentMenu Is Nothing Then
+                        Text1_KeyDown vbKeyLeft, 0
+                    Else
+                        HideList
+                    End If
+                End If
+
+            Case vbKeyReturn
+
+                KeyCode = 0
+                If m_MultiSelect Then
+                    If m_Index <> -1 Then
+                        m_Items(m_Index).Checked = Not m_Items(m_Index).Checked
+                        Draw
+                        RaiseEvent ItemClick
+                    End If
+                Else
+                    If m_Index <> -1 Then
+                        If Not isWinChild Then HideList
+                        RaiseEvent ItemClick
+
+                        If SrcTextBox <> 0 Then
+                            bTimerSkipRoutines = True
+                            sText = m_Items(m_Index).Text
+                            TextBox_SetText SrcTextBox, sText
+                            TextBox_SelStart SrcTextBox, Len(sText)
+                            bTimerSkipRoutines = False
+                            RaiseEvent PostAutoComplete
+                        End If
+                    Else
+                        If SrcTextBox <> 0 Then
+                            HideList
+                            SendMessageW SrcTextBox, WM_CHAR, vbKeyReturn, 0
+                        Else
+                            Beep
+                        End If
+                    End If
+                End If
+
+            Case vbKeyPageDown
+                KeyCode = 0
+                ItemPerPage = ListHeight \ (ItemHeight * DpiFactor)
+                For i = m_Index + ItemPerPage To mListCount - 1
+                    If IsItemSelectable(i) Then
+                        m_Index = i
+                        FocusItem m_Index
+                        RaiseEvent IndexChange
+                        Exit For
+                    End If
+                Next
+                Text1_KeyDown vbKeyEnd, 0
+
+            Case vbKeyPageUp
+                KeyCode = 0
+                ItemPerPage = ListHeight \ (ItemHeight * DpiFactor)
+
+                For i = m_Index - ItemPerPage To 0 Step -1
+                    If IsItemSelectable(i) Then
+                        m_Index = i
+                        FocusItem m_Index
+                        RaiseEvent IndexChange
+                        Exit For
+                    End If
+                Next
+                Text1_KeyDown vbKeyHome, 0
+
+            Case vbKeyTab
+                If Not isWinChild Then HideList
+
+            Case vbKeyLeft
+                KeyCode = 0
+                If Not ParentMenu Is Nothing Then
+                    GiveCommand
+                    ParentMenu.TakeCommand
+                    Set ParentMenu = Nothing
+                    HideList
+                End If
+
+            Case vbKeyRight
+                KeyCode = 0
+
+                If m_Index <> -1 Then
+                    If Not m_Items(m_Index).SubMenu Is Nothing Then
+                        GetWindowRect UserControl.hWnd, tR
+                        Set m_Items(m_Index).SubMenu.ParentMenu = Me
+                        Set ChildMenu = m_Items(m_Index).SubMenu
+                        GiveCommand
+                        m_Items(m_Index).SubMenu.ListIndex = -1
+                        m_Items(m_Index).SubMenu.ShowList tR.Right, tR.Top + GetItemTop(m_Index) - lHeadHeight, tR.Left
+                    End If
+                End If
+
+        End Select
+
+    End Sub
+
+    Private Sub Text1_KeyPress(KeyAscii As Integer)
+        If KeyAscii = vbKeyReturn Then KeyAscii = 0
+    End Sub
+
+    '======================================================================
+    ' Reemplazo de Timer1 (SetTimer / WM_TIMER)
+    '======================================================================
+    Private Sub Timer1_SetInterval(ByVal Interval As Long)
+        m_TimerInterval = Interval
+        Timer1_Apply
+    End Sub
+
+    Private Sub Timer1_SetEnabled(ByVal Enabled As Boolean)
+        m_TimerEnabled = Enabled
+        Timer1_Apply
+    End Sub
+
+    Private Sub Timer1_Apply()
+        Dim lNew As Long
+        If m_hWndSubclassed = 0 Then Exit Sub
+        If m_TimerEnabled Then lNew = m_TimerInterval
+        If lNew = m_TimerActive Then Exit Sub
+        If lNew > 0 Then
+            SetTimer m_hWndSubclassed, TIMER_MAIN, lNew, 0
+        Else
+            KillTimer m_hWndSubclassed, TIMER_MAIN
+        End If
+        m_TimerActive = lNew
+    End Sub
+
+    Private Sub Timer1_Timer()
+        Dim hwin As LongPtr
+        Dim PT As POINTAPI
+
+        '------------------
+        If bShowSubMenu Then
+            TickCount = TickCount + 1
+            If TickCount > 30 Then
+                bShowSubMenu = False
+                TimerShowMenu
+            End If
+        End If
+
+        '------------------
+        If bHideSubMenu Then
+            TickCount = TickCount + 1
+            If TickCount > 30 Then
+                bHideSubMenu = False
+                TimerHideMenu
+            End If
+        End If
+        '------------------
+
+        If bTimerSkipRoutines Then
+            If ChildMenu Is Nothing Then
+                bTimerSkipRoutines = False
+            Else
+                Exit Sub
+            End If
+        End If
+
+        If isWinChild Then
+            GetCursorPos PT
+            hwin = WindowFromPointXY(PT)
+            If hwin <> UserControl.hWnd Then
+                m_HotItem = -1
+                SB.HotPart = sbpNone
+                Timer1_SetInterval 0
+                Draw
+            End If
+        Else
+
+            If (GetAsyncKeyState(vbLeftButton) < 0) Or (GetAsyncKeyState(vbRightButton) < 0) Then
+                GetCursorPos PT
+                hwin = WindowFromPointXY(PT)
+
+                If hwin <> UserControl.hWnd And hwin <> Text1.hWnd Then
+
+                    If Not ParentMenu Is Nothing Then
+                        If hwin = ParentMenu.hWnd Then Exit Sub
+                    End If
+
+                    HideList
+                End If
+            End If
+
+            If bKillFocus Then HideList
+            ' esto es para que se pueda mostrar u ocultar la lista presionando un boton
+            ' con este tiempo de puede consultar si bShow = true
+        End If
+    End Sub
+
+    Private Function WindowFromPointXY(ByRef PT As POINTAPI) As LongPtr
+        ' WindowFromPoint recibe un POINT por valor (8 bytes)
+        Dim llPt As LongLong
+        CopyMemory llPt, PT, 8
+        WindowFromPointXY = WindowFromPoint(llPt)
+    End Function
+
+    Private Sub TimerHideMenu()
+        If Not ChildMenu Is Nothing Then
+            Set ChildMenu.ParentMenu = Nothing
+            ChildMenu.HideList
+            Set ChildMenu = Nothing
+            TakeCommand
+            m_Index = -1
+            Draw
+        End If
+    End Sub
+
+    Private Sub TimerShowMenu()
+        Dim tR As RECT
+        If m_TimerTag = m_Index Then Exit Sub
+        If m_TimerTag < 0 Or m_TimerTag > mListCount - 1 Then Exit Sub
+        GetWindowRect UserControl.hWnd, tR
+        m_Index = m_TimerTag
+        Draw
+        Set m_Items(m_Index).SubMenu.ParentMenu = Me
+        Set ChildMenu = m_Items(m_Index).SubMenu
+
+        GiveCommand
+
+        m_Items(m_Index).SubMenu.ListIndex = -1
+        m_Items(m_Index).SubMenu.ShowList tR.Right, tR.Top + GetItemTop(m_Index) - lHeadHeight, tR.Left
+
+    End Sub
+
+    '======================================================================
+    ' Barra de desplazamiento interna (antes ucScrollbar1)
+    '======================================================================
+    Private Sub ucScrollbar1_Change()
+        Draw
+        If SB.Value = SB.Max Then
+            RaiseEvent ScrollBottom
+        End If
+    End Sub
+
+    Private Sub ucScrollbar1_Scroll()
+        Draw
+    End Sub
+
+    Private Sub SB_ApplyDesign()
+        Select Case m_ListDesign
+            Case GoogleDesign
+                SB.Width = 8 * DpiFactor
+                SB.ShowButtons = False
+                SB.Style = sCustomDraw
+            Case MicrosoftDesign
+                SB.Width = 16 * DpiFactor
+                SB.ShowButtons = True
+                SB.Style = sThemed
+        End Select
+    End Sub
+
+    Private Sub SB_SetMax(ByVal NewMax As Long)
+        SB.Max = NewMax
+        If SB.Max < 0 Then
+            SB.Value = 0
+        ElseIf SB.Value > SB.Max Then
+            SB.Value = SB.Max
+        End If
+    End Sub
+
+    Private Sub SB_Move(ByVal Left As Long, ByVal Top As Long, ByVal Width As Long, ByVal Height As Long)
+        SB.Left = Left
+        SB.Top = Top
+        SB.Width = Width
+        SB.Height = Height
+    End Sub
+
+    ' Cambia el valor; bScroll = True durante el arrastre del thumb (evento Scroll)
+    Private Sub SB_SetValue(ByVal NewValue As Long, ByVal bScroll As Boolean, Optional ByVal bRaise As Boolean = True)
+        If NewValue > SB.Max Then NewValue = SB.Max
+        If NewValue < 0 Then NewValue = 0
+        If NewValue = SB.Value Then Exit Sub
+        SB.Value = NewValue
+        If Not bRaise Then Exit Sub
+        If bScroll Then
+            ucScrollbar1_Scroll
+        Else
+            ucScrollbar1_Change
+        End If
+    End Sub
+
+    Private Sub SB_GetMetrics(ByRef BtnSize As Long, ByRef TrackTop As Long, ByRef TrackLen As Long, ByRef ThumbTop As Long, ByRef ThumbLen As Long)
+        Dim lPage As Long, lMin As Long
+
+        If SB.ShowButtons Then BtnSize = SB.Width Else BtnSize = 0
+        If BtnSize * 2 > SB.Height Then BtnSize = SB.Height \ 2
+        TrackTop = SB.Top + BtnSize
+        TrackLen = SB.Height - BtnSize * 2
+        If TrackLen < 0 Then TrackLen = 0
+
+        If SB.Max <= 0 Then
+            ThumbTop = TrackTop
+            ThumbLen = TrackLen
+            Exit Sub
+        End If
+
+        lPage = SB.LargeChange
+        If lPage < 1 Then lPage = 1
+        ThumbLen = CLng(CDbl(TrackLen) * lPage / (SB.Max + lPage))
+        lMin = 16 * DpiFactor
+        If ThumbLen < lMin Then ThumbLen = lMin
+        If ThumbLen > TrackLen Then ThumbLen = TrackLen
+        ThumbTop = TrackTop + CLng(CDbl(TrackLen - ThumbLen) * SB.Value / SB.Max)
+    End Sub
+
+    Private Function SB_HitTest(ByVal X As Long, ByVal Y As Long) As eSbPart
+        Dim BtnSize As Long, TrackTop As Long, TrackLen As Long, ThumbTop As Long, ThumbLen As Long
+
+        If Not SB.Visible Then Exit Function
+        If X < SB.Left Or X >= SB.Left + SB.Width Then Exit Function
+        If Y < SB.Top Or Y >= SB.Top + SB.Height Then Exit Function
+
+        SB_GetMetrics BtnSize, TrackTop, TrackLen, ThumbTop, ThumbLen
+
+        If Y < TrackTop Then
+            SB_HitTest = sbpUpButton
+        ElseIf Y >= TrackTop + TrackLen Then
+            SB_HitTest = sbpDownButton
+        ElseIf Y < ThumbTop Then
+            SB_HitTest = sbpTrackUp
+        ElseIf Y >= ThumbTop + ThumbLen Then
+            SB_HitTest = sbpTrackDown
+        Else
+            SB_HitTest = sbpThumb
+        End If
+    End Function
+
+    Private Sub SB_DoStep(ByVal Part As eSbPart)
+        Select Case Part
+            Case sbpUpButton:   SB_SetValue SB.Value - SB.SmallChange, False
+            Case sbpDownButton: SB_SetValue SB.Value + SB.SmallChange, False
+            Case sbpTrackUp:    SB_SetValue SB.Value - SB.LargeChange, False
+            Case sbpTrackDown:  SB_SetValue SB.Value + SB.LargeChange, False
+        End Select
+    End Sub
+
+    Private Function SB_MouseDown(ByVal Button As Integer, ByVal X As Long, ByVal Y As Long) As Boolean
+        Dim BtnSize As Long, TrackTop As Long, TrackLen As Long, ThumbTop As Long, ThumbLen As Long
+        Dim Part As eSbPart
+
+        If Not SB.Visible Then Exit Function
+        If X < SB.Left Then Exit Function
+        SB_MouseDown = True
+        If Button <> vbLeftButton Then Exit Function
+
+        Timer1_SetEnabled False   'antes: ucScrollbar1_MouseDown -> Timer1.Enabled = False
+
+        Part = SB_HitTest(X, Y)
+        SB.PressedPart = Part
+        Select Case Part
+            Case sbpThumb
+                SB_GetMetrics BtnSize, TrackTop, TrackLen, ThumbTop, ThumbLen
+                SB.DragOffset = Y - ThumbTop
+            Case sbpUpButton, sbpDownButton, sbpTrackUp, sbpTrackDown
+                SB_DoStep Part
+                SB.RepeatStarted = False
+                If m_hWndSubclassed Then SetTimer m_hWndSubclassed, TIMER_SCROLL, 350, 0
+        End Select
+        Draw
+    End Function
+
+    Private Function SB_MouseMove(ByVal X As Long, ByVal Y As Long) As Boolean
+        Dim BtnSize As Long, TrackTop As Long, TrackLen As Long, ThumbTop As Long, ThumbLen As Long
+        Dim Part As eSbPart
+
+        If SB.PressedPart = sbpThumb Then
+            SB_GetMetrics BtnSize, TrackTop, TrackLen, ThumbTop, ThumbLen
+            If TrackLen - ThumbLen > 0 Then
+                SB_SetValue CLng(CDbl(Y - SB.DragOffset - TrackTop) * SB.Max / (TrackLen - ThumbLen)), True
+            End If
+            SB_MouseMove = True
+            Exit Function
+        End If
+
+        If SB.PressedPart <> sbpNone Then SB_MouseMove = True: Exit Function
+
+        Part = SB_HitTest(X, Y)
+        If Part <> SB.HotPart Then
+            SB.HotPart = Part
+            Draw
+        End If
+        If SB.Visible And X >= SB.Left Then SB_MouseMove = True
+    End Function
+
+    Private Function SB_MouseUp() As Boolean
+        Dim WasThumb As Boolean
+        If SB.PressedPart = sbpNone Then Exit Function
+        SB_MouseUp = True
+        WasThumb = (SB.PressedPart = sbpThumb)
+        SB_StopRepeat
+        SB.PressedPart = sbpNone
+        Timer1_SetEnabled True    'antes: ucScrollbar1_MouseUp -> Timer1.Enabled = True
+        If WasThumb Then
+            ucScrollbar1_Change
+        Else
+            Draw
+        End If
+    End Function
+
+    Private Sub SB_StopRepeat()
+        If m_hWndSubclassed Then KillTimer m_hWndSubclassed, TIMER_SCROLL
+    End Sub
+
+    Private Sub SB_RepeatTick()
+        Dim PT As POINTAPI
+        Dim tR As RECT
+
+        If Not SB.RepeatStarted Then
+            SB.RepeatStarted = True
+            SetTimer m_hWndSubclassed, TIMER_SCROLL, 50, 0
+        End If
+
+        If (GetAsyncKeyState(vbLeftButton) >= 0) Then
+            SB_MouseUp
+            Exit Sub
+        End If
+
+        ' Solo repetir si el cursor sigue sobre la parte pulsada
+        GetCursorPos PT
+        GetWindowRect UserControl.hWnd, tR
+        If SB_HitTest(PT.X - tR.Left, PT.Y - tR.Top) = SB.PressedPart Then
+            SB_DoStep SB.PressedPart
+        End If
+    End Sub
+
+    Private Sub SB_MouseWheel(ByVal Delta As Long)
+        If Not SB.Visible Or Not SB.WheelEnabled Then Exit Sub
+        SB_SetValue SB.Value - (Delta * SB.WheelChange) \ 120, False
+    End Sub
+
+    Private Sub SB_Paint(ByVal lHdc As LongPtr)
+        Dim BtnSize As Long, TrackTop As Long, TrackLen As Long, ThumbTop As Long, ThumbLen As Long
+        Dim rc As RECT
+        Dim hTheme As LongPtr
+        Dim lState As Long
+        Dim lColor As Long
+
+        If Not SB.Visible Then Exit Sub
+        If SB.Width <= 0 Or SB.Height <= 0 Then Exit Sub
+
+        SB_GetMetrics BtnSize, TrackTop, TrackLen, ThumbTop, ThumbLen
+
+        If SB.Style = sThemed Then hTheme = OpenThemeData(UserControl.hWnd, StrPtr("SCROLLBAR"))
+
+        If hTheme <> 0 Then
+            '----- Estilo Microsoft (con tema de Windows)
+            SetRect rc, SB.Left, TrackTop, SB.Left + SB.Width, TrackTop + TrackLen
+            DrawThemeBackground hTheme, lHdc, SBP_LOWERTRACKVERT, 1, rc, 0
+
+            If BtnSize > 0 Then
+                SetRect rc, SB.Left, SB.Top, SB.Left + SB.Width, SB.Top + BtnSize
+                DrawThemeBackground hTheme, lHdc, SBP_ARROWBTN, ABS_UPNORMAL + SB_PartState(sbpUpButton) - 1, rc, 0
+                SetRect rc, SB.Left, SB.Top + SB.Height - BtnSize, SB.Left + SB.Width, SB.Top + SB.Height
+                DrawThemeBackground hTheme, lHdc, SBP_ARROWBTN, ABS_DOWNNORMAL + SB_PartState(sbpDownButton) - 1, rc, 0
+            End If
+
+            If SB.Max > 0 Then
+                lState = SB_PartState(sbpThumb)
+                SetRect rc, SB.Left, ThumbTop, SB.Left + SB.Width, ThumbTop + ThumbLen
+                DrawThemeBackground hTheme, lHdc, SBP_THUMBBTNVERT, lState, rc, 0
+                DrawThemeBackground hTheme, lHdc, SBP_GRIPPERVERT, lState, rc, 0
+            End If
+            CloseThemeData hTheme
+
+        ElseIf SB.Style = sThemed Then
+            '----- Estilo Microsoft clasico (sin temas)
+            SetRect rc, SB.Left, SB.Top, SB.Left + SB.Width, SB.Top + SB.Height
+            FillRectangle lHdc, rc, vbScrollBars
+            If BtnSize > 0 Then
+                SetRect rc, SB.Left, SB.Top, SB.Left + SB.Width, SB.Top + BtnSize
+                DrawFrameControl lHdc, rc, DFC_SCROLL, DFCS_SCROLLUP Or IIf(SB.PressedPart = sbpUpButton, DFCS_PUSHED, 0)
+                SetRect rc, SB.Left, SB.Top + SB.Height - BtnSize, SB.Left + SB.Width, SB.Top + SB.Height
+                DrawFrameControl lHdc, rc, DFC_SCROLL, DFCS_SCROLLDOWN Or IIf(SB.PressedPart = sbpDownButton, DFCS_PUSHED, 0)
+            End If
+            If SB.Max > 0 Then
+                SetRect rc, SB.Left, ThumbTop, SB.Left + SB.Width, ThumbTop + ThumbLen
+                FillRectangle lHdc, rc, vbButtonFace
+                DrawEdge lHdc, rc, EDGE_RAISED, BF_RECT_MIDDLE
+            End If
+
+        Else
+            '----- Estilo Google (dibujo personalizado, antes ucScrollbar1_OnPaint)
+            SetRect rc, SB.Left, SB.Top, SB.Left + SB.Width, SB.Top + SB.Height
+            FillRectangle lHdc, rc, UserControl.BackColor
+
+            If SB.Max > 0 Then
+                lState = SB_PartState(sbpThumb)
+                If IsDarkColor(UserControl.BackColor) Then
+                    If lState = 2 Then
+                        lColor = ShiftColor(UserControl.BackColor, vbWhite, 180)
+                    ElseIf lState = 3 Then
+                        lColor = ShiftColor(UserControl.BackColor, vbWhite, 150)
+                    Else
+                        lColor = ShiftColor(UserControl.BackColor, vbWhite, 200)
+                    End If
+                Else
+                    If lState = 2 Then
+                        lColor = ShiftColor(UserControl.BackColor, vbBlack, 220)
+                    ElseIf lState = 3 Then
+                        lColor = ShiftColor(UserControl.BackColor, vbBlack, 180)
+                    Else
+                        lColor = ShiftColor(UserControl.BackColor, vbBlack, 200)
+                    End If
+                End If
+                RoundRectPlus lHdc, SB.Left, ThumbTop, SB.Width - DpiFactor, ThumbLen - DpiFactor, RGBtoARGB(lColor, 100), 0, SB.Width - 1
+            End If
+        End If
+    End Sub
+
+    ' 1 = normal, 2 = hot, 3 = pressed
+    Private Function SB_PartState(ByVal Part As eSbPart) As Long
+        If SB.PressedPart = Part Then
+            SB_PartState = 3
+        ElseIf SB.HotPart = Part Then
+            SB_PartState = 2
+        Else
+            SB_PartState = 1
+        End If
+    End Function
+
+    '======================================================================
+    ' Eventos del UserControl
+    '======================================================================
+    Private Sub UserControl_AmbientChanged(PropertyName As String)
+        If isWinChild Then
+            If PropertyName = "BackColor" Then
+                If m_BorderVisible Then cShadow.Refresh
+            End If
+        End If
+    End Sub
+
+    Private Sub UserControl_DblClick()
+        RaiseEvent DblClick
+    End Sub
+
+    Private Sub UserControl_EnterFocus()
+        bHasFocus = True
+        If isWinChild Then
+            With cShadow
+                .ShadowOpacity = 25
+                .ShadowColor = m_SelectionColor
+                .BorderColor = m_SelectionColor
+                If m_BorderVisible Then .Refresh
+            End With
+            Draw
+        End If
+    End Sub
+
+    Private Sub UserControl_ExitFocus()
+        bHasFocus = False
+        If isWinChild Then
+            With cShadow
+                .ShadowOpacity = 10
+                .ShadowColor = vbBlack
+                .BorderColor = m_BorderColor
+                If m_BorderVisible Then .Refresh
+            End With
+            If UserControl.Extender.Visible Then Draw
+        End If
+    End Sub
+
+    Private Sub UserControl_Hide()
+        cShadow.HideBorders
+    End Sub
+
+    Private Sub UserControl_Initialize()
+        Set cImageList = New Collection
+        Set cShadow = New ClsShadow  '<---GdiplusStartup
+        cShadow.ShadowSize = 2
+        SB.ShowButtons = False
+        SB.Style = sCustomDraw
+        m_TimerEnabled = True
+        m_TimerTag = -1
+        m_Index = -1
+        m_HotItem = -1
+        ReDim m_Items(0)
+    End Sub
+
+    Private Sub UserControl_KeyDown(KeyCode As Integer, Shift As Integer)
+        Call Text1_KeyDown(KeyCode, Shift)
+        RaiseEvent KeyDown(KeyCode, Shift)
+    End Sub
+
+    Friend Sub TakeCommand()
+        Set ChildMenu = Nothing
+        bKillFocus = False
+        RegisterHotsKeys
+        cShadow.DrawBitmap UserControl.Image.Handle, UserControl.hWnd, UserControl.ScaleWidth, UserControl.ScaleHeight
+        SetParent UserControl.hWnd, m_PhWnd
+        PutFocus UserControl.hWnd
+        SetParent UserControl.hWnd, 0
+        bKillFocus = False
+        bTimerSkipRoutines = False
+        SubMenuVisible = False
+    End Sub
+
+    Friend Sub GiveCommand()
+        bTimerSkipRoutines = True
+        SubMenuVisible = True
+        UnRegisterHotsKeys
+    End Sub
+
+    Private Sub UserControl_KeyPress(KeyAscii As Integer)
+        Dim i As Long
+        Dim lPos As Long, sChar As String
+
+        RaiseEvent KeyPress(KeyAscii)
+
+        If m_ListStyle = StyleMenu Then
+            For i = 0 To mListCount - 1
+                With m_Items(i)
+                    If Not .Disabled And Not .IsGroup And Not .Separator Then
+                        lPos = InStr(.Text, "&")
+                        If lPos Then
+                            sChar = Mid$(.Text, lPos + 1, 1)
+                            If UCase$(ChrW$(KeyAscii)) = UCase$(sChar) Then
+                                m_Index = i
+                                HideList
+                                RaiseEvent ItemClick
+                                Exit Sub
+                            End If
+                        End If
+                    End If
+                End With
+            Next
+
+            Beep
+            Exit Sub
+        End If
+
+        For i = m_Index + 1 To mListCount - 1
+            With m_Items(i)
+                If Not .Disabled And Not .IsGroup Then
+                    If UCase$(ChrW$(KeyAscii)) = UCase$(Left$(.Text, 1)) Then
+                        m_Index = i
+                        FocusItem m_Index
+                        Draw
+                        RaiseEvent IndexChange
+                        Exit Sub
+                    End If
+                End If
+            End With
+        Next
+
+        For i = 0 To m_Index - 1
+            With m_Items(i)
+                If Not .Disabled And Not .IsGroup Then
+                    If UCase$(ChrW$(KeyAscii)) = UCase$(Left$(.Text, 1)) Then
+                        m_Index = i
+                        FocusItem m_Index
+                        Draw
+                        RaiseEvent IndexChange
+                        Exit Sub
+                    End If
+                End If
+            End With
+        Next
+    End Sub
+
+    Private Sub UserControl_KeyUp(KeyCode As Integer, Shift As Integer)
+        RaiseEvent KeyUp(KeyCode, Shift)
+    End Sub
+
+    Private Sub UserControl_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        ' Clic sobre la barra de desplazamiento interna
+        If SB_MouseDown(Button, X, Y) Then Exit Sub
+
+        If Button = vbLeftButton Then
+            If m_HotItem <> -1 Then
+
+                If isWinChild Then
+                    m_Index = m_HotItem
+                    bMouseDown = True
+                    Draw
+                    RaiseEvent IndexChange
+                Else
+                    If m_Items(m_HotItem).SubMenu Is Nothing Then
+                        bMouseDown = True
+                        Draw
+                    Else
+                        bShowSubMenu = False
+                        m_TimerTag = m_HotItem
+                        TimerShowMenu
+                    End If
+                End If
+            End If
+        End If
+
+        RaiseEvent MouseDown(Button, Shift, X, Y)
+    End Sub
+
+    Private Sub UserControl_MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim HotItem As Long
+        Dim lTop As Long
+        Dim i As Long
+        Dim ET As TRACKMOUSEEVENTTYPE
+
+        EnsureSubclass
+
+        If isWinChild Then
+            Timer1_SetInterval 100 'para detectar cuando el raton sale del control
+        Else
+            ET.cbSize = LenB(ET)
+            ET.hwndTrack = UserControl.hWnd
+            ET.dwFlags = TME_LEAVE
+            TrackMouseEvent ET
+        End If
+
+        If SB_MouseMove(X, Y) Then Exit Sub
+
+        HotItem = -1
+        lTop = ListTop - SB.Value
+
+        For i = 0 To mListCount - 1
+            With m_Items(i)
+                If .Visible Then
+                    If Y >= lTop And Y < lTop + IH Then
+                        If Not .Separator And Not .IsGroup And Not .Disabled Then
+                            HotItem = i
+                            Exit For
+                        Else
+                            HotItem = -1
+                        End If
+                    End If
+                    If Not .Separator Then
+                        lTop = lTop + IH
+                    Else
+                        lTop = lTop + IH / 2
+                    End If
+                    If lTop - SB.Value > UserControl.ScaleHeight Then Exit For
+                End If
+            End With
+        Next
+
+        If HotItem <> m_HotItem Then
+            m_HotItem = HotItem
+
+            If HotItem <> -1 Then
+                If Not m_Items(HotItem).SubMenu Is Nothing Then
+                    bHideSubMenu = False
+                    bShowSubMenu = True
+                    TickCount = 0
+                    m_TimerTag = HotItem
+                Else
+                    bHideSubMenu = True
+                    bShowSubMenu = False
+                    TickCount = 0
+                    m_TimerTag = -1
+                End If
+            End If
+
+            Draw
+        End If
+        RaiseEvent MouseMove(Button, Shift, X, Y)
+    End Sub
+
+    Public Property Get hWnd() As LongPtr
+        hWnd = UserControl.hWnd
+    End Property
+
+    Private Sub UserControl_MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim sText As String
+
+        If SB_MouseUp() Then Exit Sub
+        If bMouseDown = False Then Exit Sub
+
+        bMouseDown = False
+        If m_HotItem <> -1 Then
+            m_Index = m_HotItem
+
+            If m_MultiSelect Then
+
+                m_Items(m_Index).Checked = Not m_Items(m_Index).Checked
+                Draw
+                RaiseEvent ItemClick
+            Else
+                If isWinChild Then
+                    Draw
+                Else
+                    If m_Items(m_Index).SubMenu Is Nothing Then
+                        HideList
+                    End If
+                End If
+
+                RaiseEvent ItemClick
+
+                If SrcTextBox <> 0 Then
+                    bTimerSkipRoutines = True
+                    sText = m_Items(m_Index).Text
+                    TextBox_SetText SrcTextBox, sText
+                    TextBox_SelStart SrcTextBox, Len(sText)
+                    bTimerSkipRoutines = False
+                    RaiseEvent PostAutoComplete
+                End If
+
+            End If
+        End If
+        RaiseEvent MouseUp(Button, Shift, X, Y)
+    End Sub
+
+    Private Sub LoadFontsIcons()
+        Set m_SegoeFont = New StdFont
+        m_SegoeFont.Name = "Segoe MDL2 Assets"
+
+        If m_SegoeFont.Name = "Segoe MDL2 Assets" Then
+            isSegoeFontInstaled = True
+        Else
+            Set m_SegoeFont = Nothing
+            Set m_Wingdings2 = New StdFont
+            Set m_Wingdings3 = New StdFont
+            m_Wingdings2.Name = "Wingdings 2"
+            m_Wingdings3.Name = "Wingdings 3"
+            isSegoeFontInstaled = False
+        End If
+    End Sub
+
+    Private Sub UserControl_InitProperties()
+        Dim i As Long
+
+        DpiFactor = cShadow.GetWindowsDPI
+        Me.ItemHeight = 32
+        m_ListWidth = 250
+        Me.BorderRadius = 10
+        m_SelectionColor = vbHighlight
+        m_LineColor = vbActiveBorder
+        m_BorderColor = vbActiveBorder
+        lMargin = 8 * DpiFactor
+        lCheckSize = 16 * DpiFactor
+        m_FindTextColor = ShiftColor(vbHighlight, UserControl.BackColor, 200)
+        m_HotItem = -1
+        m_BorderVisible = True
+        SB_ApplyDesign
+
+        Call LoadFontsIcons
+
+        Text1.Text = vbNullString
+
+        For i = 1 To 7
+            If i Mod 3 = 0 Then
+                AddItem "-"
+            Else
+                AddItem "Item " & i, , , "Sub Text", i = 5, i = 3
+            End If
+        Next
+        m_Index = 3
+
+        If Not Ambient.UserMode Then DrawDesignIcon
+    End Sub
+
+    Private Sub UserControl_OLECompleteDrag(Effect As Long)
+        RaiseEvent OLECompleteDrag(Effect)
+    End Sub
+
+    Private Sub UserControl_OLEDragDrop(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single)
+        RaiseEvent OLEDragDrop(Data, Effect, Button, Shift, UserControl.ScaleX(X, vbPixels, vbContainerPosition), UserControl.ScaleY(Y, vbPixels, vbContainerPosition))
+    End Sub
+
+    Private Sub UserControl_OLEDragOver(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single, State As Integer)
+        RaiseEvent OLEDragOver(Data, Effect, Button, Shift, UserControl.ScaleX(X, vbPixels, vbContainerPosition), UserControl.ScaleY(Y, vbPixels, vbContainerPosition), State)
+    End Sub
+
+    Private Sub UserControl_OLEGiveFeedback(Effect As Long, DefaultCursors As Boolean)
+        RaiseEvent OLEGiveFeedback(Effect, DefaultCursors)
+    End Sub
+
+    Private Sub UserControl_OLESetData(Data As DataObject, DataFormat As Integer)
+        RaiseEvent OLESetData(Data, DataFormat)
+    End Sub
+
+    Private Sub UserControl_OLEStartDrag(Data As DataObject, AllowedEffects As Long)
+        RaiseEvent OLEStartDrag(Data, AllowedEffects)
+    End Sub
+
+    Public Sub OLEDrag()
+        UserControl.OLEDrag
+    End Sub
+
+    Private Sub UserControl_ReadProperties(PropBag As PropertyBag)
+        Dim i As Long
+
+        DpiFactor = cShadow.GetWindowsDPI
+
+        lMargin = 8 * DpiFactor
+        lCheckSize = 16 * DpiFactor
+        m_Index = -1
+
+        Call LoadFontsIcons
+
+        UserControl.DrawWidth = 1 * DpiFactor
+
+        With PropBag
+            Set UserControl.Font = .ReadProperty("Font", Ambient.Font)
+            m_SubTitleVisible = .ReadProperty("SubTitleVisible", False)
+            m_ShowFilter = .ReadProperty("ShowFilter", False)
+            Me.ItemHeight = .ReadProperty("ItemHeight", 32)
+            m_MaxListHeight = .ReadProperty("MaxListHeight", 0)
+            m_ListWidth = .ReadProperty("ListWidth", 250)
+            m_ListDesign = .ReadProperty("ListDesign", GoogleDesign)
+            m_MultiSelect = .ReadProperty("MultiSelect", False)
+            m_UseMonocromeIcons = .ReadProperty("UseMonocromeIcons", False)
+            Me.BorderRadius = .ReadProperty("BorderRadius", 10)
+            m_DrawSeparatorLine = .ReadProperty("DrawSeparatorLine", False)
+            m_ImagesRadius = .ReadProperty("ImagesRadius", 0)
+            m_SelectionRadius = .ReadProperty("SelectionRadius", 0)
+            Me.BackColor = .ReadProperty("BackColor", UserControl.BackColor)
+            m_FindTextColor = .ReadProperty("FindTextColor", vbHighlight)
+            m_SelectionColor = .ReadProperty("SelectionColor", vbHighlight)
+            m_MaxVisibleItems = .ReadProperty("MaxVisibleItems", 0)
+            m_LineColor = .ReadProperty("LineColor", vbActiveBorder)
+            m_BorderColor = .ReadProperty("BorderColor", vbActiveBorder)
+            m_BorderVisible = .ReadProperty("BorderVisible", True)
+            UserControl.Enabled = .ReadProperty("Enabled", UserControl.Enabled)
+            m_ListStyle = .ReadProperty("ListStyle", StyleDropDown)
+            Me.OLEDropMode = .ReadProperty("OLEDropMode", OLEDropModeNone)
+
+            UserControl.MousePointer = .ReadProperty("MousePointer", vbDefault)
+            Set UserControl.MouseIcon = .ReadProperty("MouseIcon", Nothing)
+        End With
+
+        isWinChild = (m_ListStyle = StyleListBox)
+        SB_ApplyDesign
+
+        If Ambient.UserMode Then EnsureSubclass
+
+        If isWinChild Then
+            m_HotItem = -1
+            Text1.Text = vbNullString
+            If Ambient.UserMode = False Then
+                For i = 1 To 7
+                    If i Mod 3 = 0 Then
+                        AddItem "-"
+                    Else
+                        AddItem "Item " & i, , , "Sub Text", i = 5, i = 3
+                    End If
+                Next
+                m_Index = 3
+                Update
+            End If
+        Else
+            If Ambient.UserMode Then
+                UserControl.Extender.Visible = False
+            Else
+                DrawDesignIcon
+            End If
+        End If
+    End Sub
+
+    Public Sub Update(Optional bResize As Boolean = True)
+        Dim i As Long, WinHeight As Long
+
+        If m_ShowFilter Then
+            Set Text1.Font = UserControl.Font
+            Text1.Visible = True
+            Text1.Height = UserControl.Font.Size * 1.5 * DpiFactor
+            lHeadHeight = Text1.Height + lMargin * 4
+            Text1.BackColor = UserControl.BackColor
+            If IsDarkColor(Text1.BackColor) Then
+                Text1.ForeColor = vbWhite
+            Else
+                Text1.ForeColor = vbBlack
+            End If
+        Else
+            Text1.Visible = False
+            lHeadHeight = lMargin
+        End If
+
+        For i = 0 To mListCount - 1
+            With m_Items(i)
+                If .Separator Then
+                    WinHeight = WinHeight + IH / 2
+                Else
+                    WinHeight = WinHeight + IH
+                End If
+            End With
+        Next
+
+        ListTop = lHeadHeight
+        ListHeight = UserControl.ScaleHeight - lHeadHeight - lMargin
+
+        SB_ApplyDesign
+        SB_SetMax IH * (mListCount - SeparatorsCount) + (IH / 2) * SeparatorsCount - ListHeight
+
+        If SB.Max > 0 Then
+            SB.SmallChange = IH * 3
+            ' Sugerencia de JB
+            SB.LargeChange = ListHeight - IH
+            ' Fin Sugerencia de JB
+            SB.WheelChange = IH * 3
+            SB.WheelEnabled = True
+            SB.Visible = True
+        Else
+            SB.WheelEnabled = False
+            SB.Visible = False
+            SB.Value = 0
+        End If
+
+        If bResize Then UserControl_Resize
+        If m_BorderVisible Then cShadow.Refresh
+        Draw
+
+    End Sub
+
+    Private Sub UserControl_Show()
+        If isWinChild Then
+            Draw
+            If Ambient.UserMode Then
+                EnsureSubclass
+                If m_BorderVisible Then
+                    cShadow.ShowBorders UserControl.hWnd, isWinChild
+                End If
+            End If
+        ElseIf Not Ambient.UserMode Then
+            DrawDesignIcon
+        End If
+    End Sub
+
+    Private Sub UserControl_WriteProperties(PropBag As PropertyBag)
+        With PropBag
+            .WriteProperty "Font", UserControl.Font, Ambient.Font
+            .WriteProperty "SubTitleVisible", m_SubTitleVisible, False
+            .WriteProperty "ShowFilter", m_ShowFilter, False
+            .WriteProperty "ItemHeight", m_ItemHeight, 32
+            .WriteProperty "MaxListHeight", m_MaxListHeight, 0
+            .WriteProperty "ListWidth", m_ListWidth, 250
+            .WriteProperty "ListDesign", m_ListDesign, GoogleDesign
+            .WriteProperty "MultiSelect", m_MultiSelect, False
+            .WriteProperty "UseMonocromeIcons", m_UseMonocromeIcons, False
+            .WriteProperty "BorderRadius", m_BorderRadius, 10
+            .WriteProperty "DrawSeparatorLine", m_DrawSeparatorLine, False
+            .WriteProperty "ImagesRadius", m_ImagesRadius, 0
+            .WriteProperty "SelectionRadius", m_SelectionRadius, 0
+            .WriteProperty "BackColor", UserControl.BackColor
+            .WriteProperty "FindTextColor", m_FindTextColor, ShiftColor(vbHighlight, UserControl.BackColor, 200)
+            .WriteProperty "SelectionColor", m_SelectionColor
+            .WriteProperty "MaxVisibleItems", m_MaxVisibleItems, 0
+            .WriteProperty "LineColor", m_LineColor, vbActiveBorder
+            .WriteProperty "BorderColor", m_BorderColor, vbActiveBorder
+            .WriteProperty "BorderVisible", m_BorderVisible, True
+            .WriteProperty "Enabled", UserControl.Enabled, True
+            .WriteProperty "ListStyle", m_ListStyle, StyleDropDown
+            .WriteProperty "OLEDropMode", Me.OLEDropMode, OLEDropModeNone
+            .WriteProperty "MousePointer", UserControl.MousePointer, vbDefault
+            .WriteProperty "MouseIcon", UserControl.MouseIcon, Nothing
+        End With
+    End Sub
+
+    Private Sub UserControl_Resize()
+        Dim BW As Long
+
+        On Error Resume Next
+
+        If Ambient.UserMode Or isWinChild Then
+            If m_ListDesign = GoogleDesign Then
+                SB_Move UserControl.ScaleWidth - SB.Width - 2 * DpiFactor, ListTop, SB.Width, UserControl.ScaleHeight - ListTop - lMargin
+            Else
+                If isWinChild Then BW = DpiFactor
+
+                If m_ShowFilter Then
+                    SB_Move UserControl.ScaleWidth - SB.Width - BW * 2, ListTop, SB.Width, UserControl.ScaleHeight - ListTop - BR / 2 - BW * 2
+                Else
+                    SB_Move UserControl.ScaleWidth - SB.Width - BW * 2, BR / 2 + BW, SB.Width, UserControl.ScaleHeight - BR - BW * 3
+                End If
+            End If
+
+            If m_ShowFilter Then
+                Text1.Move lMargin * 2, lMargin * 2, UserControl.ScaleWidth - lMargin * 4 - 16 * DpiFactor
+            End If
+
+            hRgn = CreateRoundRectRgn(0, 0, UserControl.ScaleWidth, UserControl.ScaleHeight, BR, BR)
+            SetWindowRgn UserControl.hWnd, hRgn, 1   'la region pasa a ser propiedad del sistema
+
+            If isWinChild Then Call Update(False)
+        Else
+            UserControl.Size 32 * Screen.TwipsPerPixelX, 32 * Screen.TwipsPerPixelY
+            DrawDesignIcon
+        End If
+
+    End Sub
+
+    Private Sub UserControl_Terminate()
+        Dim i As Long
+
+        ' Quitar subclasificaciones y temporizadores primero
+        RemoveSubclasses
+
+        Set ParentMenu = Nothing
+        Set ChildMenu = Nothing
+
+        If Not cImageList Is Nothing Then
+            For i = 1 To cImageList.Count
+                GdipDisposeImage CLngPtr(cImageList(i))
+            Next
+        End If
+
+        Set cImageList = Nothing
+        Set cShadow = Nothing 'GdiplusShutdown
+    End Sub
+
+    '======================================================================
+    ' Propiedades
+    '======================================================================
+    Public Property Get Font() As StdFont
+        Set Font = UserControl.Font
+    End Property
+
+    Public Property Set Font(new_Font As StdFont)
+        With UserControl.Font
+            .Name = new_Font.Name
+            .Size = new_Font.Size
+            .Bold = new_Font.Bold
+            .Italic = new_Font.Italic
+            .Underline = new_Font.Underline
+            .Strikethrough = new_Font.Strikethrough
+            .Weight = new_Font.Weight
+            .Charset = new_Font.Charset
+        End With
+        UserControl.PropertyChanged "Font"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get ListStyle() As eListStyle
+        ListStyle = m_ListStyle
+    End Property
+
+    Public Property Let ListStyle(ByVal New_Value As eListStyle)
+
+        If New_Value = StyleListBox Then
+            isWinChild = True
+            UserControl.Size 150 * Screen.TwipsPerPixelX, 200 * Screen.TwipsPerPixelY
+        Else
+            isWinChild = False
+            UserControl.Size 32 * Screen.TwipsPerPixelX, 32 * Screen.TwipsPerPixelY
+        End If
+        m_ListStyle = New_Value
+
+        UserControl.PropertyChanged "ListStyle"
+        If Not Ambient.UserMode Then
+            If isWinChild Then Update Else DrawDesignIcon
+        End If
+    End Property
+
+    Public Function ItemHitest(ByVal Y As Long) As Long
+        Dim Item As Long
+        Dim lTop As Long
+        Dim i As Long
+        Item = -1
+        For i = 0 To mListCount - 1
+            With m_Items(i)
+                If .Visible Then
+                    If Y >= lTop And Y < lTop + IH Then
+                        If Not .Separator And Not .IsGroup And Not .Disabled Then
+                            Item = i
+                            Exit For
+                        Else
+                            Item = -1
+                        End If
+                    End If
+                    If Not .Separator Then
+                        lTop = lTop + IH
+                    Else
+                        lTop = lTop + IH / 2
+                    End If
+                    If lTop - SB.Value > UserControl.ScaleHeight Then Exit For
+                End If
+            End With
+        Next
+
+        ItemHitest = Item
+    End Function
+
+    Public Property Get Text() As String
+        If m_Index <> -1 Then
+            Text = m_Items(m_Index).Text
+        End If
+    End Property
+
+    Public Property Get Enabled() As Boolean
+        Enabled = UserControl.Enabled
+    End Property
+
+    Public Property Let Enabled(ByVal New_Value As Boolean)
+        UserControl.Enabled = New_Value
+        UserControl.PropertyChanged "Enabled"
+    End Property
+
+    Public Property Get LineColor() As OLE_COLOR
+        LineColor = m_LineColor
+    End Property
+
+    Public Property Let LineColor(ByVal New_Value As OLE_COLOR)
+        m_LineColor = New_Value
+        UserControl.PropertyChanged "LineColor"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get BorderColor() As OLE_COLOR
+        BorderColor = m_BorderColor
+    End Property
+
+    Public Property Let BorderColor(ByVal New_Value As OLE_COLOR)
+        m_BorderColor = New_Value
+        UserControl.PropertyChanged "BorderColor"
+        cShadow.BorderColor = m_BorderColor
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get BorderVisible() As Boolean
+        BorderVisible = m_BorderVisible
+    End Property
+
+    Public Property Let BorderVisible(ByVal New_Value As Boolean)
+        m_BorderVisible = New_Value
+        UserControl.PropertyChanged "BorderVisible"
+
+        If Ambient.UserMode Then
+            If m_BorderVisible Then
+                If UserControl.Extender.Visible Then cShadow.ShowBorders Me.hWnd, True
+            Else
+                cShadow.HideBorders
+            End If
+        End If
+    End Property
+
+    Public Property Get SelectionColor() As OLE_COLOR
+        SelectionColor = m_SelectionColor
+    End Property
+
+    Public Property Let SelectionColor(ByVal New_Value As OLE_COLOR)
+        m_SelectionColor = New_Value
+        UserControl.PropertyChanged "SelectionColor"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get BackColor() As OLE_COLOR
+        BackColor = UserControl.BackColor
+    End Property
+
+    Public Property Let BackColor(ByVal New_Value As OLE_COLOR)
+        UserControl.BackColor = New_Value
+        If Ambient.UserMode Then cShadow.BackColor = New_Value
+        UserControl.PropertyChanged "BackColor"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Let FindTextColor(ByVal New_Value As OLE_COLOR)
+        m_FindTextColor = New_Value
+        UserControl.PropertyChanged "FindTextColor"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get FindTextColor() As OLE_COLOR
+        FindTextColor = m_FindTextColor
+    End Property
+
+    Public Property Get SubTitleVisible() As Boolean
+        SubTitleVisible = m_SubTitleVisible
+    End Property
+
+    Public Property Let SubTitleVisible(ByVal New_Value As Boolean)
+        m_SubTitleVisible = New_Value
+        UserControl.PropertyChanged "SubTitleVisible"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get ShowFilter() As Boolean
+        ShowFilter = m_ShowFilter
+    End Property
+
+    Public Property Let ShowFilter(ByVal New_Value As Boolean)
+        m_ShowFilter = New_Value
+        UserControl.PropertyChanged "ShowFilter"
+        If isWinChild Then Update True
+    End Property
+
+    Public Property Get ItemHeight() As Long
+        ItemHeight = m_ItemHeight
+    End Property
+
+    Public Property Let ItemHeight(ByVal New_Value As Long)
+        m_ItemHeight = New_Value
+        IH = m_ItemHeight * DpiFactor
+        UserControl.PropertyChanged "ItemHeight"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get MaxListHeight() As Long
+        MaxListHeight = m_MaxListHeight
+    End Property
+
+    Public Property Let MaxListHeight(ByVal New_Value As Long)
+        m_MaxListHeight = New_Value
+        UserControl.PropertyChanged "MaxListHeight"
+    End Property
+
+    Public Property Get MaxVisibleItems() As Long
+        MaxVisibleItems = m_MaxVisibleItems
+    End Property
+
+    Public Property Let MaxVisibleItems(ByVal New_Value As Long)
+        m_MaxVisibleItems = New_Value
+        UserControl.PropertyChanged "MaxVisibleItems"
+    End Property
+
+    Public Property Get ListWidth() As Long
+        ListWidth = m_ListWidth
+    End Property
+
+    Public Property Let ListWidth(ByVal New_Value As Long)
+        m_ListWidth = New_Value
+        UserControl.PropertyChanged "ListWidth"
+    End Property
+
+    Public Property Get ListDesign() As eListDesign
+        ListDesign = m_ListDesign
+    End Property
+
+    Public Property Let ListDesign(ByVal New_Value As eListDesign)
+        m_ListDesign = New_Value
+        UserControl.PropertyChanged "ListDesign"
+        SB_ApplyDesign
+        If isWinChild Then Update True
+    End Property
+
+    Public Property Get MultiSelect() As Boolean
+        MultiSelect = m_MultiSelect
+    End Property
+
+    Public Property Let MultiSelect(ByVal New_Value As Boolean)
+        m_MultiSelect = New_Value
+        UserControl.PropertyChanged "MultiSelect"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get UseMonocromeIcons() As Boolean
+        UseMonocromeIcons = m_UseMonocromeIcons
+    End Property
+
+    Public Property Let UseMonocromeIcons(ByVal New_Value As Boolean)
+        m_UseMonocromeIcons = New_Value
+        UserControl.PropertyChanged "UseMonocromeIcons"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get BorderRadius() As Integer
+        BorderRadius = m_BorderRadius
+    End Property
+
+    Public Property Let BorderRadius(ByVal New_Value As Integer)
+        m_BorderRadius = New_Value
+        BR = m_BorderRadius * DpiFactor
+        cShadow.BorderRadius = New_Value
+        UserControl.PropertyChanged "BorderRadius"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get DrawSeparatorLine() As Boolean
+        DrawSeparatorLine = m_DrawSeparatorLine
+    End Property
+
+    Public Property Let DrawSeparatorLine(ByVal New_Value As Boolean)
+        m_DrawSeparatorLine = New_Value
+        UserControl.PropertyChanged "DrawSeparatorLine"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get ImagesRadius() As Long
+        ImagesRadius = m_ImagesRadius
+    End Property
+
+    Public Property Let ImagesRadius(ByVal New_Value As Long)
+        m_ImagesRadius = New_Value
+        UserControl.PropertyChanged "ImagesRadius"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get SelectionRadius() As Long
+        SelectionRadius = m_SelectionRadius
+    End Property
+
+    Public Property Let SelectionRadius(ByVal New_Value As Long)
+        m_SelectionRadius = New_Value
+        UserControl.PropertyChanged "SelectionRadius"
+        If isWinChild Then Draw
+    End Property
+
+    Public Property Get DragIcon() As IPictureDisp
+        Set DragIcon = UserControl.Extender.DragIcon
+    End Property
+
+    Public Property Let DragIcon(ByVal Value As IPictureDisp)
+        UserControl.Extender.DragIcon = Value
+    End Property
+
+    Public Property Set DragIcon(ByVal Value As IPictureDisp)
+        Set UserControl.Extender.DragIcon = Value
+    End Property
+
+    Public Property Get DragMode() As Integer
+        DragMode = UserControl.Extender.DragMode
+    End Property
+
+    Public Property Let DragMode(ByVal Value As Integer)
+        UserControl.Extender.DragMode = Value
+    End Property
+
+    Public Property Get OLEDropMode() As ListPlusOLEDropModeConstants
+        OLEDropMode = UserControl.OLEDropMode
+    End Property
+
+    Public Property Let OLEDropMode(ByVal Value As ListPlusOLEDropModeConstants)
+        Select Case Value
+            Case OLEDropModeNone, OLEDropModeManual
+                UserControl.OLEDropMode = Value
+            Case Else
+                Err.Raise 380
+        End Select
+        UserControl.PropertyChanged "OLEDropMode"
+    End Property
+
+    Public Sub Drag(Optional ByRef Action As Variant)
+        If IsMissing(Action) Then UserControl.Extender.Drag Else UserControl.Extender.Drag Action
+    End Sub
+
+    Public Property Let MousePointer(ByVal newValue As MousePointerConstants)
+        UserControl.MousePointer = newValue
+        UserControl.PropertyChanged "MousePointer"
+    End Property
+
+    Public Property Get MousePointer() As MousePointerConstants
+        MousePointer = UserControl.MousePointer
+    End Property
+
+    Public Property Set MouseIcon(ByVal newValue As IPictureDisp)
+        Set UserControl.MouseIcon = newValue
+        UserControl.PropertyChanged "MouseIcon"
+    End Property
+
+    Public Property Get MouseIcon() As IPictureDisp
+        Set MouseIcon = UserControl.MouseIcon
+    End Property
+
+    Public Property Get ItemIsChild(ByVal Index As Long) As Boolean
+        ItemIsChild = m_Items(Index).IsChild
+    End Property
+
+    Public Property Get ItemIsGroup(ByVal Index As Long) As Boolean
+        ItemIsGroup = m_Items(Index).IsGroup
+    End Property
+
+    Public Function GetItemParentGroup(ByVal Index As Long) As Long
+        Dim i As Long
+        If m_Items(Index).IsGroup Then
+            GetItemParentGroup = Index: Exit Function
+        End If
+
+        If m_Items(Index).IsChild Then
+            For i = Index To 0 Step -1
+                If m_Items(i).IsGroup Then
+                    GetItemParentGroup = i: Exit Function
+                End If
+            Next
+        Else
+            GetItemParentGroup = Index: Exit Function
+        End If
+        GetItemParentGroup = -1
+    End Function
+
+    Public Function GetGroupChildCounts(ByVal Index As Long) As Long
+        Dim i As Long, lCount As Long
+        If m_Items(Index).IsGroup And Index < mListCount - 1 Then
+            For i = Index + 1 To mListCount - 1
+                If m_Items(i).IsChild Then
+                    lCount = lCount + 1
+                Else
+                    Exit For
+                End If
+            Next
+            GetGroupChildCounts = lCount
+        Else
+            GetGroupChildCounts = -1
+        End If
+
+    End Function
+
+    Public Property Let ItemText(ByVal Index As Long, ByVal New_Value As String)
+        m_Items(Index).Text = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemText(ByVal Index As Long) As String
+        ItemText = m_Items(Index).Text
+    End Property
+
+    Public Property Let ItemTextColor(ByVal Index As Long, ByVal New_Value As Long)
+        m_Items(Index).TextColor = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemTextColor(ByVal Index As Long) As Long
+        ItemTextColor = m_Items(Index).TextColor
+    End Property
+
+    Public Property Let ItemBackColor(ByVal Index As Long, ByVal New_Value As Long)
+        m_Items(Index).BackColor = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemBackColor(ByVal Index As Long) As Long
+        ItemBackColor = m_Items(Index).BackColor
+    End Property
+
+    Public Property Let ItemSubText(ByVal Index As Long, ByVal New_Value As String)
+        m_Items(Index).SubText = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemSubText(ByVal Index As Long) As String
+        ItemSubText = m_Items(Index).SubText
+    End Property
+
+    Public Property Let ItemSubTextColor(ByVal Index As Long, ByVal New_Value As Long)
+        m_Items(Index).SubTextColor = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemSubTextColor(ByVal Index As Long) As Long
+        ItemSubTextColor = m_Items(Index).SubTextColor
+    End Property
+
+    Public Property Let ItemBold(ByVal Index As Long, ByVal New_Value As Boolean)
+        m_Items(Index).ItemBold = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemBold(ByVal Index As Long) As Boolean
+        ItemBold = m_Items(Index).ItemBold
+    End Property
+
+    Public Property Let ItemData(ByVal Index As Long, ByVal New_Value As Variant)
+        m_Items(Index).Data = New_Value
+    End Property
+
+    Public Property Get ItemData(ByVal Index As Long) As Variant
+        ItemData = m_Items(Index).Data
+    End Property
+
+    Public Property Let ItemIcon(ByVal Index As Long, ByVal New_Value As Long)
+        m_Items(Index).Icon = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemIcon(ByVal Index As Long) As Long
+        ItemIcon = m_Items(Index).Icon
+    End Property
+
+    Public Property Let ItemDisabled(ByVal Index As Long, ByVal New_Value As Boolean)
+        m_Items(Index).Disabled = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemDisabled(ByVal Index As Long) As Boolean
+        ItemDisabled = m_Items(Index).Disabled
+    End Property
+
+    Public Property Let ItemSelected(ByVal Index As Long, ByVal New_Value As Boolean)
+        m_Items(Index).Checked = New_Value
+        Draw
+    End Property
+
+    Public Property Get ItemSelected(ByVal Index As Long) As Boolean
+        ItemSelected = m_Items(Index).Checked
+    End Property
+
+    Public Property Let ListIndex(ByVal New_Value As Long)
+        m_Index = New_Value
+        Draw
+    End Property
+
+    Public Property Get ListIndex() As Long
+        ListIndex = m_Index
+    End Property
+
+    Public Property Get ListCount() As Long
+        ListCount = mListCount
+    End Property
+
+    Public Property Get Shadow() As ClsShadow
+        Set Shadow = cShadow
+    End Property
+
+    Public Property Get IsListVisible() As Boolean
+        IsListVisible = bShow
+    End Property
+
+    Public Sub Refresh()
+        Draw
+    End Sub
+
+    Public Sub Clear()
+        GroupIsOpen = False
+        m_Index = -1
+        m_HotItem = -1
+        mListCount = 0
+        SeparatorsCount = 0
+        ReDim m_Items(0)
+    End Sub
+
+    Public Sub BSort(ByVal SortOrder As eSortOrder)
+        Dim i As Long
+        Dim bResult As Boolean
+        Dim Item As tItem
+        Dim Sorted As Boolean
+
+        If mListCount < 2 Then Draw: Exit Sub
+
+        Do While Not Sorted
+            Sorted = True
+            For i = 0 To mListCount - 2
+                If SortOrder = SortAscendant Then
+                    bResult = StrComp(m_Items(i).Text, m_Items(i + 1).Text, vbTextCompare) = 1
+                Else
+                    bResult = StrComp(m_Items(i).Text, m_Items(i + 1).Text, vbTextCompare) = -1
+                End If
+
+                If bResult Then
+                    Item = m_Items(i + 1)
+                    m_Items(i + 1) = m_Items(i)
+                    m_Items(i) = Item
+                    Sorted = False
+                End If
+            Next
+        Loop
+        Draw
+    End Sub
+
+    Public Sub QSort(ByVal SortOrder As eSortOrder)
+        If mListCount < 2 Then Draw: Exit Sub
+        If SortOrder = SortAscendant Then
+            QuickSortAsc 0, mListCount - 1
+        Else
+            QuickSortDes 0, mListCount - 1
+        End If
+        Draw
+    End Sub
+
+    Private Sub QuickSortAsc(ByVal First As Long, ByVal Last As Long)
+        '  Made by Michael Ciurescu (CVMichael from vbforums.com)
+        '  Original thread: http://www.vbforums.com/showthread.php?t=231925
+        Dim Low As Long, High As Long
+        Dim MidValue As String
+        Dim Item As tItem
+
+        Low = First
+        High = Last
+        MidValue = m_Items((First + Last) \ 2).Text
+
+        Do
+            While StrComp(m_Items(Low).Text, MidValue, vbTextCompare) = -1
+                Low = Low + 1
+            Wend
+
+            While StrComp(MidValue, m_Items(High).Text, vbTextCompare) = -1
+                High = High - 1
+            Wend
+
+            If Low <= High Then
+                Item = m_Items(Low)
+                m_Items(Low) = m_Items(High)
+                m_Items(High) = Item
+
+                Low = Low + 1
+                High = High - 1
+            End If
+        Loop While Low <= High
+
+        If First < High Then QuickSortAsc First, High
+        If Low < Last Then QuickSortAsc Low, Last
+    End Sub
+
+    Private Sub QuickSortDes(ByVal First As Long, ByVal Last As Long)
+        '  Made by Michael Ciurescu (CVMichael from vbforums.com)
+        '  Original thread: http://www.vbforums.com/showthread.php?t=231925
+        Dim Low As Long, High As Long
+        Dim MidValue As String
+        Dim Item As tItem
+
+        Low = First
+        High = Last
+        MidValue = m_Items((First + Last) \ 2).Text
+
+        Do
+            While StrComp(MidValue, m_Items(Low).Text, vbTextCompare) = -1
+                Low = Low + 1
+            Wend
+
+            While StrComp(m_Items(High).Text, MidValue, vbTextCompare) = -1
+                High = High - 1
+            Wend
+
+            If Low <= High Then
+                Item = m_Items(Low)
+                m_Items(Low) = m_Items(High)
+                m_Items(High) = Item
+
+                Low = Low + 1
+                High = High - 1
+            End If
+        Loop While Low <= High
+
+        If First < High Then QuickSortDes First, High
+        If Low < Last Then QuickSortDes Low, Last
+    End Sub
+
+    '======================================================================
+    ' Lista de imagenes (GDI+)
+    '======================================================================
+    Public Function ImageListInitialize(Optional ByVal ImageWidth As Integer = 16, Optional ByVal ImageHeight As Integer = 16) As Boolean
+        ImgLstWidth = ImageWidth * DpiFactor
+        ImgLstHeight = ImageHeight * DpiFactor
+        ImageListClear
+        ImageListInitialize = True
+    End Function
+
+    Public Property Get ImgListWidth() As Long
+        ImgListWidth = ImgLstWidth
+    End Property
+
+    Public Property Get ImgListHeight() As Long
+        ImgListHeight = ImgLstHeight
+    End Property
+
+    Public Function ImageListAddImage(SrcImg As Variant, Optional Key As Variant) As Long
+        Dim hImage As LongPtr
+        hImage = LoadPictureEx(SrcImg, ImgLstWidth, ImgLstHeight)
+        If hImage <> 0 Then
+            cImageList.Add hImage, Key
+            ImageListAddImage = cImageList.Count
+        End If
+    End Function
+
+    Public Function ImageListRemoveImage(Index As Variant) As Long
+        GdipDisposeImage CLngPtr(cImageList(Index))
+        cImageList.Remove Index
+        ImageListRemoveImage = cImageList.Count
+    End Function
+
+    Public Function ImageListInsertImage(SrcImg As Variant, Optional Key As Variant, Optional Before As Variant, Optional After As Variant) As Long
+        Dim hImage As LongPtr
+        hImage = LoadPictureEx(SrcImg, ImgLstWidth, ImgLstHeight)
+        If hImage <> 0 Then
+            cImageList.Add hImage, Key, Before, After
+            ImageListInsertImage = cImageList.Count
+        End If
+    End Function
+
+    Public Sub ImageListClear()
+        Dim i As Long
+        For i = 1 To cImageList.Count
+            GdipDisposeImage CLngPtr(cImageList(i))
+        Next
+        Set cImageList = New Collection
+    End Sub
+
+    Public Property Get ImageListCount() As Long
+        ImageListCount = cImageList.Count
+    End Property
+
+    Private Sub RoundRectPlus(ByVal lHdc As LongPtr, ByVal Left As Long, ByVal Top As Long, _
+                              ByVal Width As Long, ByVal Height As Long, ByVal BackColor As Long, ByVal BorderColor As Long, ByVal Radius As Long)
+        Dim hPen As LongPtr, hBrush As LongPtr
+        Dim mpath As LongPtr, hGraphics As LongPtr
+
+        GdipCreateFromHDC lHdc, hGraphics
+        GdipSetSmoothingMode hGraphics, SmoothingModeAntiAlias
+
+        If BackColor <> 0 Then GdipCreateSolidFill BackColor, hBrush
+        If BorderColor <> 0 Then GdipCreatePen1 BorderColor, 1 * DpiFactor, &H2, hPen
+
+        If Radius = 0 Then
+
+            If hBrush Then GdipFillRectangleI hGraphics, hBrush, Left, Top, Width, Height
+            If hPen Then GdipDrawRectangleI hGraphics, hPen, Left, Top, Width, Height
+
+        Else
+            If GdipCreatePath(0, mpath) = 0 Then
+
+                GdipAddPathArcI mpath, Left, Top, Radius, Radius, 180, 90
+                GdipAddPathArcI mpath, Left + Width - Radius, Top, Radius, Radius, 270, 90
+                GdipAddPathArcI mpath, Left + Width - Radius, Top + Height - Radius, Radius, Radius, 0, 90
+                GdipAddPathArcI mpath, Left, Top + Height - Radius, Radius, Radius, 90, 90
+                GdipClosePathFigure mpath
+
+                If hBrush Then GdipFillPath hGraphics, hBrush, mpath
+                If hPen Then GdipDrawPath hGraphics, hPen, mpath
+                Call GdipDeletePath(mpath)
+            End If
+        End If
+
+        If hBrush Then Call GdipDeleteBrush(hBrush)
+        If hPen Then Call GdipDeletePen(hPen)
+        GdipDeleteGraphics hGraphics
+    End Sub
+
+    Private Function LoadPictureEx(SrcImg As Variant, Optional ByVal Width As Long, Optional ByVal Height As Long) As LongPtr
+        Const OBJ_BITMAP As Long = 7
+        Dim hImage1 As LongPtr, hImage2 As LongPtr, hGraphics As LongPtr
+        Dim DataArr() As Byte
+        Dim lPictureRealWidth As Long, lPictureRealHeight As Long
+        Dim X As Long, Y As Long, cx As Long, cy As Long
+        Dim sngRatio1 As Single, sngRatio2 As Single
+        Dim mpath As LongPtr, Radius As Long, hPen As LongPtr
+        Dim sSrc As String
+        Dim oXMLHTTP As Object
+        Dim hHandle As LongPtr
+
+        Select Case VarType(SrcImg)
+            Case vbString
+                sSrc = SrcImg
+                If PathIsURLW(StrPtr(sSrc)) Then
+
+                    If LCase$(Left$(sSrc, 5)) = "data:" Then
+                        If Base64Decode(Split(sSrc, ",")(1), DataArr) Then
+                            Call LoadImageFromArray(DataArr, hImage1)
+                        End If
+                    Else
+                        Set oXMLHTTP = CreateObject("Microsoft.XMLHTTP")
+
+                        oXMLHTTP.Open "GET", sSrc, True
+                        oXMLHTTP.send
+                        While oXMLHTTP.readyState <> 4
+                            DoEvents
+                        Wend
+                        If oXMLHTTP.Status = 200 Then
+                            DataArr() = oXMLHTTP.responseBody
+                            Call LoadImageFromArray(DataArr, hImage1)
+                        End If
+                    End If
+                Else
+                    Call GdipLoadImageFromFile(StrPtr(sSrc), hImage1)
+                End If
+
+            Case vbLong, vbInteger, vbLongLong
+                hHandle = CLngPtr(SrcImg)
+                If GetObjectType(hHandle) = OBJ_BITMAP Then
+                    Call GdipCreateBitmapFromHBITMAP(hHandle, 0, hImage1)
+                Else
+                    Call GdipCreateBitmapFromHICON(hHandle, hImage1)
+                End If
+
+            Case vbDataObject, vbObject
+                Call GdipLoadImageFromStream(SrcImg, hImage1)
+
+            Case (vbArray Or vbByte)
+                DataArr() = SrcImg
+                Call LoadImageFromArray(DataArr, hImage1)
+        End Select
+
+        If hImage1 <> 0 Then
+            GdipGetImageWidth hImage1, lPictureRealWidth
+            GdipGetImageHeight hImage1, lPictureRealHeight
+            If Width = 0 Then Width = lPictureRealWidth
+            If Height = 0 Then Height = lPictureRealHeight
+
+            sngRatio1 = Width / lPictureRealWidth
+            sngRatio2 = Height / lPictureRealHeight
+            If sngRatio1 > sngRatio2 Then sngRatio1 = sngRatio2
+            cx = lPictureRealWidth * sngRatio1: cy = lPictureRealHeight * sngRatio1
+            X = (Width - cx) \ 2: Y = (Height - cy) \ 2
+
+            GdipCreateBitmapFromScan0 Width, Height, 0&, PixelFormat32bppPARGB, 0, hImage2
+            GdipGetImageGraphicsContext hImage2, hGraphics
+            GdipSetSmoothingMode hGraphics, SmoothingModeAntiAlias
+
+            If m_ImagesRadius > 0 Then
+                Radius = m_ImagesRadius * DpiFactor
+                If GdipCreatePath(0, mpath) = 0 Then
+                    X = X + DpiFactor: Y = Y + DpiFactor
+                    cx = cx - DpiFactor * 2: cy = cy - DpiFactor * 2
+                    GdipAddPathArcI mpath, X, Y, Radius, Radius, 180, 90
+                    GdipAddPathArcI mpath, X + cx - Radius, Y, Radius, Radius, 270, 90
+                    GdipAddPathArcI mpath, X + cx - Radius, Y + cy - Radius, Radius, Radius, 0, 90
+                    GdipAddPathArcI mpath, X, Y + cy - Radius, Radius, Radius, 90, 90
+                    GdipClosePathFigure mpath
+                    GdipSetClipPath hGraphics, mpath, CombineModeIntersect
+                End If
+            End If
+
+            GdipDrawImageRectRectI hGraphics, hImage1, X, Y, cx, cy, 0, 0, lPictureRealWidth, lPictureRealHeight, UnitPixel, 0, 0, 0
+
+            If mpath Then
+                GdipCreatePen1 RGBtoARGB(vbButtonFace, 100), 1 * DpiFactor, &H2, hPen
+                GdipResetClip hGraphics
+                GdipDrawPath hGraphics, hPen, mpath
+                GdipDeletePen hPen
+                GdipDeletePath mpath
+            End If
+
+            GdipDeleteGraphics hGraphics
+            GdipDisposeImage hImage1
+            LoadPictureEx = hImage2
+        End If
+    End Function
+
+    Public Function ImageListDraw(ByVal lHdc As LongPtr, ByVal Index As Long, ByVal Left As Long, ByVal Top As Long, ByVal Width As Long, ByVal Height As Long, Optional ByVal PictureColor As Long = CLR_NONE, Optional ByVal Disabled As Boolean) As Boolean
+        Dim tMatrixColor As COLORMATRIX, tMatrixGray As COLORMATRIX
+        Dim hAttributes As LongPtr, hGraphics As LongPtr
+        Dim hImage As LongPtr
+        Dim R As Byte, G As Byte, B As Byte
+
+        If Index < 1 Or Index > cImageList.Count Then Exit Function
+        hImage = cImageList(Index)
+
+        Call GdipCreateImageAttributes(hAttributes)
+
+        With tMatrixColor
+            If PictureColor <> CLR_NONE Then
+                PictureColor = TranslateColor(PictureColor)
+
+                B = ((PictureColor \ &H10000) And &HFF)
+                G = ((PictureColor \ &H100) And &HFF)
+                R = (PictureColor And &HFF)
+
+                .M(0, 0) = R / 255
+                .M(1, 0) = G / 255
+                .M(2, 0) = B / 255
+                .M(0, 4) = R / 255
+                .M(1, 4) = G / 255
+                .M(2, 4) = B / 255
+            Else
+                .M(0, 0) = 1
+                .M(1, 1) = 1
+                .M(2, 2) = 1
+            End If
+            .M(3, 3) = 1
+            .M(4, 4) = 1
+
+            If Disabled Then
+                .M(0, 0) = 0.299
+                .M(1, 0) = 0.299
+                .M(2, 0) = 0.299
+                .M(0, 1) = 0.587
+                .M(1, 1) = 0.587
+                .M(2, 1) = 0.587
+                .M(0, 2) = 0.114
+                .M(1, 2) = 0.114
+                .M(2, 2) = 0.114
+            End If
+        End With
+
+        GdipCreateFromHDC lHdc, hGraphics
+        GdipSetImageAttributesColorMatrix hAttributes, &H0, 1, tMatrixColor, tMatrixGray, &H0
+        ImageListDraw = GdipDrawImageRectRectI(hGraphics, hImage, Left, Top, Width, Height, 0, 0, Width, Height, UnitPixel, hAttributes) = 0&
+        Call GdipDeleteGraphics(hGraphics)
+        Call GdipDisposeImageAttributes(hAttributes)
+    End Function
+
+    Private Function LoadImageFromArray(ByRef bvData() As Byte, ByRef hImage As LongPtr) As Boolean
+        Dim IStream As IUnknown
+        Dim hMem As LongPtr, pMem As LongPtr
+        Dim lSize As Long
+
+        On Error Resume Next
+        lSize = UBound(bvData) - LBound(bvData) + 1   'falla si el array no esta dimensionado
+        If Err.Number <> 0 Then Exit Function
+        On Error GoTo 0
+        If lSize <= 0 Then Exit Function
+
+        hMem = GlobalAlloc(GMEM_MOVEABLE, lSize)
+        If hMem = 0 Then Exit Function
+        pMem = GlobalLock(hMem)
+        CopyMemory ByVal pMem, bvData(LBound(bvData)), lSize
+        GlobalUnlock hMem
+
+        If CreateStreamOnHGlobal(hMem, 1, IStream) = 0 Then   'el stream libera hMem
+            If GdipLoadImageFromStream(IStream, hImage) = 0 Then
+                LoadImageFromArray = True
+            End If
+        Else
+            GlobalFree hMem
+        End If
+        Set IStream = Nothing
+    End Function
+
+    Private Function Base64Decode(ByVal sIn As String, ByRef bvOut() As Byte) As Boolean 'By Cocus
+        Const CRYPT_STRING_BASE64 As Long = &H1
+        Dim lLenOut As Long
+        Call CryptStringToBinaryW(StrPtr(sIn), Len(sIn), CRYPT_STRING_BASE64, 0, lLenOut, 0, 0)
+        If lLenOut = 0 Then Exit Function
+        ReDim bvOut(lLenOut - 1)
+        Call CryptStringToBinaryW(StrPtr(sIn), Len(sIn), CRYPT_STRING_BASE64, VarPtr(bvOut(0)), lLenOut, 0, 0)
+        Base64Decode = True
+    End Function
+
+    Public Function RGBtoARGB(ByVal RGBColor As Long, ByVal Opacity As Long) As Long 'By LaVople
+        If (RGBColor And &H80000000) Then RGBColor = GetSysColor(RGBColor And &HFF&)
+        RGBtoARGB = (RGBColor And &HFF00&) Or (RGBColor And &HFF0000) \ &H10000 Or (RGBColor And &HFF) * &H10000
+        Opacity = CByte((Abs(Opacity) / 100) * 255)
+        If Opacity < 128 Then
+            If Opacity < 0& Then Opacity = 0&
+            RGBtoARGB = RGBtoARGB Or Opacity * &H1000000
+        Else
+            If Opacity > 255& Then Opacity = 255&
+            RGBtoARGB = RGBtoARGB Or (Opacity - 128&) * &H1000000 Or &H80000000
+        End If
+    End Function
+
+    Private Function TranslateColor(ByVal Color As Long) As Long
+        If (Color And &H80000000) Then
+            TranslateColor = GetSysColor(Color And &HFF&)
+        Else
+            TranslateColor = Color
+        End If
+    End Function
+
+    'Funcion para combinar dos colores
+    Private Function ShiftColor(ByVal clrFirst As Long, ByVal clrSecond As Long, ByVal lAlpha As Long) As Long
+        Dim clrFore(3)         As Byte
+        Dim clrBack(3)         As Byte
+
+        clrFirst = TranslateColor(clrFirst)
+        clrSecond = TranslateColor(clrSecond)
+
+        CopyMemory clrFore(0), clrFirst, 4
+        CopyMemory clrBack(0), clrSecond, 4
+
+        clrFore(0) = (clrFore(0) * lAlpha + clrBack(0) * (255 - lAlpha)) / 255
+        clrFore(1) = (clrFore(1) * lAlpha + clrBack(1) * (255 - lAlpha)) / 255
+        clrFore(2) = (clrFore(2) * lAlpha + clrBack(2) * (255 - lAlpha)) / 255
+
+        CopyMemory ShiftColor, clrFore(0), 4
+
+    End Function
+
+    Private Function IsDarkColor(ByVal Color As Long) As Boolean
+        Dim BGRA(0 To 3) As Byte
+        Color = TranslateColor(Color)
+        CopyMemory BGRA(0), Color, 4&
+        IsDarkColor = ((CLng(BGRA(0)) + (CLng(BGRA(1)) * 3) + CLng(BGRA(2))) / 2) < 382
+    End Function
+
+    Private Sub TextBox_SelStart(ByVal lhWnd As LongPtr, ByVal New_Value As Long)
+        Call SendMessageW(lhWnd, EM_SETSEL, New_Value, New_Value)
+    End Sub
+
+    Private Function TextBox_SetText(ByVal lhWnd As LongPtr, ByVal sText As String) As LongPtr
+        TextBox_SetText = SendMessageW(lhWnd, WM_SETTEXT, 0, StrPtr(sText))
+    End Function
+
+    Private Function TextBox_GetText(ByVal lhWnd As LongPtr) As String
+        Dim sText As String
+        Dim lLength As Long
+
+        lLength = CLng(SendMessageW(lhWnd, WM_GETTEXTLENGTH, 0, 0))
+        sText = Space$(lLength + 1)
+
+        Call SendMessageW(lhWnd, WM_GETTEXT, lLength + 1, StrPtr(sText))
+        TextBox_GetText = Left$(sText, lLength)
+    End Function
+
+    '======================================================================
+    ' Subclasificacion (reemplaza a clsSubClass / WndProc)
+    '======================================================================
+    Private Sub EnsureSubclass()
+        Dim h As LongPtr
+        If m_hWndSubclassed <> 0 Then Exit Sub
+        If Not Ambient.UserMode Then Exit Sub
+        h = UserControl.hWnd
+        If h = 0 Then Exit Sub
+        If UCL_SubclassList(h, ObjPtr(Me), ObjPtr(Me)) Then
+            m_hWndSubclassed = h
+            m_TimerActive = 0
+            Timer1_Apply
+        End If
+    End Sub
+
+    Private Sub RemoveSubclasses()
+        If m_hWndSubclassed <> 0 Then
+            KillTimer m_hWndSubclassed, TIMER_MAIN
+            KillTimer m_hWndSubclassed, TIMER_SCROLL
+            m_TimerActive = 0
+            UnRegisterHotsKeys
+            UCL_UnsubclassList m_hWndSubclassed, ObjPtr(Me)
+            m_hWndSubclassed = 0
+        End If
+        If m_SrcSubclassed <> 0 Then
+            UCL_UnsubclassList m_SrcSubclassed, ObjPtr(Me) + 1
+            m_SrcSubclassed = 0
+        End If
+    End Sub
+
+    ' Signed HIWORD de un WPARAM (para WM_MOUSEWHEEL)
+    Private Function HiWordSigned(ByVal Value As LongPtr) As Long
+        Dim w(1) As Integer
+        CopyMemory w(0), Value, 4
+        HiWordSigned = w(1)
+    End Function
+
+    ' Llamado desde mUcListHelpers.UCL_ListProc
+    Friend Function zzSubclassProc(ByVal lhWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr) As LongPtr
+        Dim KeyCode As Integer
+
+        On Error Resume Next
+
+        If lhWnd = m_hWndSubclassed And m_hWndSubclassed <> 0 Then
+            Select Case uMsg
+                Case WM_TIMER
+                    Select Case CLng(wParam)
+                        Case TIMER_MAIN
+                            Timer1_Timer
+                            Exit Function
+                        Case TIMER_SCROLL
+                            SB_RepeatTick
+                            Exit Function
+                    End Select
+
+                Case WM_HOTKEY
+                    If bShow Then
+                        KeyCode = CInt(wParam)
+                        Text1_KeyDown KeyCode, 0
+                        Exit Function   'bHandled = True
+                    End If
+
+                Case WM_MOUSELEAVE
+                    If bShow Then
+                        m_HotItem = -1
+                        bHideSubMenu = False
+                        bShowSubMenu = False
+                        SB.HotPart = sbpNone
+                        Draw
+                    End If
+
+                Case WM_MOUSEWHEEL
+                    If SB.Visible And SB.WheelEnabled Then
+                        SB_MouseWheel HiWordSigned(wParam)
+                        Exit Function
+                    End If
+
+                Case WM_IME_SETCONTEXT
+                    If bShow Then
+                        If m_ListStyle = StyleDropDown Then HideList
+                    End If
+
+                Case WM_NCDESTROY
+                    zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)
+                    KillTimer lhWnd, TIMER_MAIN
+                    KillTimer lhWnd, TIMER_SCROLL
+                    m_TimerActive = 0
+                    UCL_UnsubclassList lhWnd, ObjPtr(Me)
+                    m_hWndSubclassed = 0
+                    Exit Function
+            End Select
+
+        ElseIf lhWnd = m_SrcSubclassed And m_SrcSubclassed <> 0 Then
+            Select Case uMsg
+                Case WM_CHAR
+                    zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)   'MSG_AFTER
+                    If CLng(wParam) <> vbKeyReturn Then
+                        SrcTextBox_Change
+                    End If
+                    Exit Function
+
+                Case WM_NCDESTROY
+                    zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)
+                    UCL_UnsubclassList lhWnd, ObjPtr(Me) + 1
+                    m_SrcSubclassed = 0
+                    SrcTextBox = 0
+                    Exit Function
+            End Select
+        End If
+
+        zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)
+    End Function
+
+End Class

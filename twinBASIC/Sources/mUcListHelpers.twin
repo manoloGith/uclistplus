@@ -1,0 +1,47 @@
+Module mUcListHelpers
+    '-------------------------
+    'Name: mUcListHelpers
+    'Modulo auxiliar de ucList / ClsShadow para twinBASIC.
+    'Reemplaza a clsSubClass (thunks en ensamblador, solo 32 bits) por
+    'SetWindowSubclass de comctl32, que funciona en 32 y 64 bits.
+    '--------------------------
+
+    Option Explicit
+
+    ' Se usan los ordinales para que funcione tambien con comctl32 v5.8x
+    Private Declare PtrSafe Function SetWindowSubclass Lib "comctl32" Alias "#410" (ByVal hWnd As LongPtr, ByVal pfnSubclass As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As LongPtr) As Long
+    Private Declare PtrSafe Function RemoveWindowSubclass Lib "comctl32" Alias "#412" (ByVal hWnd As LongPtr, ByVal pfnSubclass As LongPtr, ByVal uIdSubclass As LongPtr) As Long
+    Private Declare PtrSafe Function DefSubclassProc Lib "comctl32" Alias "#413" (ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+
+    '---- ucList ----
+    Public Function UCL_SubclassList(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As LongPtr) As Boolean
+        UCL_SubclassList = SetWindowSubclass(hWnd, AddressOf UCL_ListProc, uIdSubclass, dwRefData) <> 0
+    End Function
+
+    Public Sub UCL_UnsubclassList(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr)
+        RemoveWindowSubclass hWnd, AddressOf UCL_ListProc, uIdSubclass
+    End Sub
+
+    Public Function UCL_ListProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As ucList) As LongPtr
+        UCL_ListProc = dwRefData.zzSubclassProc(hWnd, uMsg, wParam, lParam, uIdSubclass)
+    End Function
+
+    '---- ClsShadow ----
+    Public Function UCL_SubclassShadow(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As LongPtr) As Boolean
+        UCL_SubclassShadow = SetWindowSubclass(hWnd, AddressOf UCL_ShadowProc, uIdSubclass, dwRefData) <> 0
+    End Function
+
+    Public Sub UCL_UnsubclassShadow(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr)
+        RemoveWindowSubclass hWnd, AddressOf UCL_ShadowProc, uIdSubclass
+    End Sub
+
+    Public Function UCL_ShadowProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As ClsShadow) As LongPtr
+        UCL_ShadowProc = dwRefData.zzSubclassProc(hWnd, uMsg, wParam, lParam, uIdSubclass)
+    End Function
+
+    '---- comun ----
+    Public Function UCL_DefProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+        UCL_DefProc = DefSubclassProc(hWnd, uMsg, wParam, lParam)
+    End Function
+
+End Module
