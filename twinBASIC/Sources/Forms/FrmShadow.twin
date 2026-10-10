@@ -1,0 +1,147 @@
+[Description("")]
+[FormDesignerId("D5977117-F3BF-5864-B242-C8B23B787D31")]
+[PredeclaredId]
+Class FrmShadow
+
+    Option Explicit
+
+    Private Declare PtrSafe Function CreateRoundRectRgn Lib "gdi32" (ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long, ByVal X3 As Long, ByVal Y3 As Long) As LongPtr
+    Private Declare PtrSafe Function SetWindowRgn Lib "user32" (ByVal hWnd As LongPtr, ByVal hRgn As LongPtr, ByVal bRedraw As Long) As Long
+    Private Declare PtrSafe Function SetLayeredWindowAttributes Lib "user32" (ByVal hWnd As LongPtr, ByVal crKey As Long, ByVal bAlpha As Byte, ByVal dwFlags As Long) As Long
+    Private Declare PtrSafe Function SetWindowLongW Lib "user32" (ByVal hWnd As LongPtr, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
+    Private Declare PtrSafe Function GetWindowLongW Lib "user32" (ByVal hWnd As LongPtr, ByVal nIndex As Long) As Long
+    Private Declare PtrSafe Function ReleaseCapture Lib "user32" () As Long
+    Private Declare PtrSafe Function SendMessageW Lib "user32" (ByVal hWnd As LongPtr, ByVal wMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+    ' Reemplazo de COMDLG32.OCX (CommonDialog1.ShowColor)
+    Private Declare PtrSafe Function ChooseColorW Lib "comdlg32" (ByRef pChoosecolor As CHOOSECOLORW) As Long
+
+    Private Type CHOOSECOLORW
+        lStructSize     As Long
+        hwndOwner       As LongPtr
+        hInstance       As LongPtr
+        rgbResult       As Long
+        lpCustColors    As LongPtr
+        Flags           As Long
+        lCustData       As LongPtr
+        lpfnHook        As LongPtr
+        lpTemplateName  As LongPtr
+    End Type
+
+    Private Const WM_SYSCOMMAND As Long = &H112
+    Private Const MOUSE_MOVE As Long = &HF012&
+    Private Const GWL_EXSTYLE As Long = -20
+    Private Const WS_EX_LAYERED As Long = &H80000
+    Private Const LWA_ALPHA As Long = &H2
+    Private Const CC_RGBINIT As Long = &H1
+    Private Const CC_FULLOPEN As Long = &H2
+
+    Private C As ClsShadow
+    Private m_CustColors(15) As Long
+
+    Private Sub Form_Activate()
+        C.ShowBorders Me.hWnd, False
+    End Sub
+
+    Private Sub Form_Load()
+        Dim hRgn As LongPtr
+
+        Set C = New ClsShadow
+        hRgn = CreateRoundRectRgn(0, 0, Me.ScaleWidth, Me.ScaleHeight, 10 * C.GetWindowsDPI, 10 * C.GetWindowsDPI)
+        SetWindowRgn Me.hWnd, hRgn, 1
+
+        SetWindowLongW Me.hWnd, GWL_EXSTYLE, GetWindowLongW(Me.hWnd, GWL_EXSTYLE) Or WS_EX_LAYERED
+        SetLayeredWindowAttributes Me.hWnd, 0, 255, LWA_ALPHA
+
+    End Sub
+
+    Private Sub Form_MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        If Button = 1 Then
+            ReleaseCapture
+            SendMessageW Me.hWnd, WM_SYSCOMMAND, MOUSE_MOVE, 0
+        End If
+    End Sub
+
+    Private Sub Form_Unload(Cancel As Integer)
+        Set C = Nothing
+    End Sub
+
+    Private Sub HScroll1_Change(Index As Integer)
+        Dim Value As Long, hRgn As LongPtr
+        Value = HScroll1(Index).Value
+        Select Case Index
+            Case 0: C.ShadowSize = Value
+            Case 1: C.ShadowOpacity = Value
+            Case 2: C.Margin = Value
+            Case 3: C.BackColorOpacity = Value
+            Case 4: C.BorderWidth = Value
+            Case 5: C.BorderOpacity = Value
+            Case 6
+                C.BorderRadius = Value
+                hRgn = CreateRoundRectRgn(0, 0, Me.ScaleWidth, Me.ScaleHeight, Value * C.GetWindowsDPI, Value * C.GetWindowsDPI)
+                SetWindowRgn Me.hWnd, hRgn, 1
+            Case 7
+                SetLayeredWindowAttributes Me.hWnd, 0, CByte((Value / 100) * 255), LWA_ALPHA
+            Case 8
+                Me.Width = 6500 + Value
+                hRgn = CreateRoundRectRgn(0, 0, Me.ScaleWidth, Me.ScaleHeight, C.BorderRadius * C.GetWindowsDPI, C.BorderRadius * C.GetWindowsDPI)
+                SetWindowRgn Me.hWnd, hRgn, 1
+        End Select
+        C.Refresh
+    End Sub
+
+    Private Sub HScroll3_Change()
+        C.ShadowOffsetX = HScroll3.Value
+        C.Refresh
+    End Sub
+
+    Private Sub Label2_Click()
+        Unload Me
+    End Sub
+
+    ' Muestra el dialogo de color de Windows. Devuelve False si se cancela.
+    Private Function ShowColor(ByRef Color As Long) As Boolean
+        Dim cc As CHOOSECOLORW
+        With cc
+            #If Win64 Then
+                .lStructSize = 72
+            #Else
+                .lStructSize = 36
+            #End If
+            .hwndOwner = Me.hWnd
+            .rgbResult = Color
+            .lpCustColors = VarPtr(m_CustColors(0))
+            .Flags = CC_RGBINIT Or CC_FULLOPEN
+        End With
+        If ChooseColorW(cc) <> 0 Then
+            Color = cc.rgbResult
+            ShowColor = True
+        End If
+    End Function
+
+    Private Sub Picture1_Click(Index As Integer)
+        Dim lColor As Long
+        lColor = Picture1(Index).BackColor
+        If (lColor And &H80000000) <> 0 Then lColor = 0
+        If Not ShowColor(lColor) Then Exit Sub
+
+        Picture1(Index).BackColor = lColor
+        Select Case Index
+            Case 0: C.ShadowColor = lColor
+            Case 1: C.BackColor = lColor
+            Case 2: C.BorderColor = lColor
+            Case 3: Me.BackColor = lColor
+        End Select
+        C.Refresh
+    End Sub
+
+    Private Sub VScroll1_Change()
+        C.ShadowOffsetY = VScroll1.Value
+        C.Refresh
+    End Sub
+
+    Private Sub Command7_Click()
+        HScroll3.Value = 0
+        VScroll1.Value = 0
+    End Sub
+
+End Class

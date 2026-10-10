@@ -39,6 +39,19 @@ Module mUcListHelpers
         UCL_ShadowProc = dwRefData.zzSubclassProc(hWnd, uMsg, wParam, lParam, uIdSubclass)
     End Function
 
+    '---- ucSelect ----
+    Public Function UCL_SubclassSelect(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As LongPtr) As Boolean
+        UCL_SubclassSelect = SetWindowSubclass(hWnd, AddressOf UCL_SelectProc, uIdSubclass, dwRefData) <> 0
+    End Function
+
+    Public Sub UCL_UnsubclassSelect(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr)
+        RemoveWindowSubclass hWnd, AddressOf UCL_SelectProc, uIdSubclass
+    End Sub
+
+    Public Function UCL_SelectProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As ucSelect) As LongPtr
+        UCL_SelectProc = dwRefData.zzSubclassProc(hWnd, uMsg, wParam, lParam, uIdSubclass)
+    End Function
+
     '---- comun ----
     Public Function UCL_DefProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
         UCL_DefProc = DefSubclassProc(hWnd, uMsg, wParam, lParam)

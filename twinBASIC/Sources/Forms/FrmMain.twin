@@ -1,0 +1,61 @@
+[Description("")]
+[FormDesignerId("AA0F9712-E1EF-5908-95BD-EA5B42B3FD53")]
+[PredeclaredId]
+Class FrmMain
+
+    Option Explicit
+
+    ' Propiedades de diseno de los ucList (en VB6 estaban en el .frm).
+    ' Ver README: los .tbform no incluyen el PropertyBag binario del control.
+    Private Sub ApplyDesignProperties()
+        With ucList1
+            .ListStyle = StyleListBox
+            .FindTextColor = vbHighlight
+            .LineColor = 13487565
+        End With
+    End Sub
+
+    Private Sub Form_Load()
+        ApplyDesignProperties
+
+        With ucList1
+            .ImageListInitialize 32, 32
+            .ImageListAddImage App.Path & "\VB6.png"
+            .ItemHeight = 48
+            .SubTitleVisible = True
+            .AddItem "FrmAutocomplete", 0, , "Autocomplete a Textbox with a suggestion List"
+            .AddItem "FrmComboBox", 0, , "Litle example of usercontrol Style ComboBox "
+            .AddItem "FrmCustomDraw", 0, , "List items are custom draw"
+            .AddItem "FrmDragDrop", 0, , "An example of how to drag and drop an item into another list"
+            .AddItem "FrmDropDownList", 0, , "Drop-down list, not combobox, to call from a button or custom control"
+            .AddItem "FrmGoogleSearch", 0, , "A complete example with everything, autocomplete in real time with google apis."
+            .AddItem "FrmListBox", 0, , "ucList with ListStyle = StyleListBox"
+            .AddItem "FrmMenu", 0, , "ucList with ListStyle = StyleMenu"
+            .AddItem "FrmShadow", 0, , "Example of using the clsshadow class in forms"
+
+            .Update
+        End With
+    End Sub
+
+    Private Sub Form_Resize()
+        On Error Resume Next
+        If Me.WindowState <> vbMinimized Then
+            ucList1.Move ucList1.Left, ucList1.Top, Me.ScaleWidth - ucList1.Left * 2, Me.ScaleHeight - ucList1.Top * 2
+        End If
+    End Sub
+
+    Private Sub ucList1_ItemClick()
+        Select Case ucList1.ListIndex
+            Case 0: FrmAutocomplete.Show
+            Case 1: FrmComboBox.Show
+            Case 2: FrmCustomDraw.Show
+            Case 3: FrmDragDrop.Show
+            Case 4: FrmDropDownList.Show
+            Case 5: FrmGoogleSearch.Show
+            Case 6: FrmListBox.Show
+            Case 7: FrmMenu.Show
+            Case 8: FrmShadow.Show
+        End Select
+    End Sub
+
+End Class

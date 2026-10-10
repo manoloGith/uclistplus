@@ -1,0 +1,389 @@
+[Description("")]
+[FormDesignerId("EF1E9AD9-BDB7-554A-9DFA-ECB71F579C93")]
+[PredeclaredId]
+Class FrmGoogleSearch
+
+    Option Explicit
+
+    Private Declare PtrSafe Function mciSendStringW Lib "winmm" (ByVal lpstrCommand As LongPtr, ByVal lpstrReturnString As LongPtr, ByVal uReturnLength As Long, ByVal hwndCallback As LongPtr) As Long
+    Private Declare PtrSafe Function CryptBinaryToStringW Lib "crypt32" (ByVal pbBinary As LongPtr, ByVal cbBinary As Long, ByVal dwFlags As Long, ByVal pszString As LongPtr, ByRef pcchString As Long) As Long
+    Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
+
+    Private Const CRYPT_STRING_BASE64           As Long = &H1
+    Private Const CRYPT_STRING_NOCRLF           As Long = &H40000000
+
+    Private cShadowTxt(1) As ClsShadow
+    Private cShadowButton(1) As ClsShadow
+    Private ImgIndex As Long
+    Private PagePos As Long
+
+    ' Propiedades de diseno de los ucList (en VB6 estaban en el .frm).
+    Private Sub ApplyDesignProperties()
+        With ucList1
+            .ListStyle = StyleListBox
+            .FindTextColor = vbHighlight
+            .SelectionColor = 16745529
+            .LineColor = 13487565
+        End With
+        ucList2.FindTextColor = vbHighlight     'StyleDropDown
+
+        ' Imagenes que en VB6 estaban guardadas en FrmGoogleSearch.frx
+        On Error Resume Next
+        Set ImgMicrophone.Picture = LoadPicture(App.Path & "\GoogleSearch_Microphone.bmp")
+        Set Image1.Picture = LoadPicture(App.Path & "\GoogleSearch_Search.bmp")
+        On Error GoTo 0
+    End Sub
+
+    Private Sub Search()
+        Dim JB As JsonBag
+        Dim i As Long
+        Dim sUrl As String
+
+        sUrl = "https://www.googleapis.com/customsearch/v1?googlehost=google.com&lr=lang_es&imgType=photo&imgSize=large&num=10&searchType=image&key=AIzaSyCB6jyUuD6pHJOW5KldSA4W2RXjBYzlX8Y&cx=733d3ac8912e284d5&start=" & PagePos & "&q="
+        sUrl = sUrl & Text1(0).Text
+        Screen.MousePointer = vbArrowHourglass
+        If LoadJson(sUrl, JB) Then
+            If JB.Exists("items") Then
+                For i = 1 To JB.Item("items").Count
+                    With JB.Item("items").Item(i)
+                        If ucList1.ImageListAddImage(.Item("image").Item("thumbnailLink")) > 0 Then
+                            ucList1.AddItem .Item("title"), ImgIndex, .Item("link"), .Item("displayLink")
+                            ImgIndex = ImgIndex + 1
+                        End If
+                    End With
+                Next
+                ucList1.Update
+            End If
+        End If
+        Screen.MousePointer = vbDefault
+    End Sub
+
+    Private Function LoadJson(ByVal Url As String, ByRef oJsonBag As JsonBag) As Boolean
+        Dim ServerXmlHttp As Object
+
+        Set ServerXmlHttp = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+        ServerXmlHttp.Open "GET", Url
+        ServerXmlHttp.send
+
+        If ServerXmlHttp.Status = 200 Then
+            Set oJsonBag = New JsonBag
+            oJsonBag.JSON = ServerXmlHttp.responseText
+            LoadJson = True
+        End If
+
+        Set ServerXmlHttp = Nothing
+    End Function
+
+    Private Sub Form_Load()
+        Dim i As Long
+
+        ApplyDesignProperties
+
+        With ucList1
+            .ImageListInitialize 80, 80
+            .ImagesRadius = 10
+            .ItemHeight = 80
+            .SubTitleVisible = True
+        End With
+
+        For i = 0 To 1
+            Set cShadowTxt(i) = New ClsShadow
+            With cShadowTxt(i)
+                .Margin = 5
+                .ShadowColor = vbActiveBorder
+                .ShadowOpacity = 20
+                .ShadowSize = 2
+                If i = 0 Then
+                    .ShowBorders Picture1.hWnd, True
+                Else
+                    .ShowBorders Text1(i).hWnd, True
+                End If
+            End With
+        Next
+
+        With ucList2
+            .MaxVisibleItems = 8
+            .ListWidth = Text1(0).Width
+            .AutoCompleteTextBox Text1(0).hWnd, -15, 10, , -Text1(0).Top - 4
+        End With
+
+        For i = 0 To 1
+            Set cShadowButton(i) = New ClsShadow
+
+            With cShadowButton(i)
+                .Margin = 2
+                .BackColor = PicButton(i).BackColor
+                .BorderColor = PicButton(i).BackColor
+                .ShadowColor = &HFF9033
+                .BorderRadius = 5
+                .BorderWidth = 1
+                .ShadowOpacity = 0
+                .ShadowSize = 2
+                .ShowBorders PicButton(i).hWnd, True
+            End With
+        Next
+    End Sub
+
+    Private Sub Form_Resize()
+        With ucList1
+            .Move .Left, .Top, Me.ScaleWidth - .Left * 2, Me.ScaleHeight - .Top - Text1(1).Height * 3
+        End With
+    End Sub
+
+    Private Sub Form_Unload(Cancel As Integer)
+        ucList2.AutoCompleteTextBox 0
+    End Sub
+
+    Private Sub ImgMicrophone_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim lRet As Long
+        Const MCIERR_WAVE_INPUTSUNSUITABLE As Long = 328
+        Beep
+        ImgMicrophone.Tag = 0
+        lRet = RecAudio()
+        Select Case lRet
+            Case 0
+                LblInfo.Caption = "Manten presionado y habla."
+                PicRec.BackColor = &HFF8439
+                ImgMicrophone.Tag = 1
+            Case MCIERR_WAVE_INPUTSUNSUITABLE
+                LblInfo.Caption = "Conecta un microfono."
+                PicRec.BackColor = &H8484FF
+            Case Else
+                LblInfo.Caption = "Error: " & lRet
+                PicRec.BackColor = &H8484FF
+        End Select
+        PicRec.Visible = True
+    End Sub
+
+    Private Sub ImgMicrophone_MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim sRet As String
+        Dim sWavBase64 As String
+
+        If ImgMicrophone.Tag = 0 Then
+            CancelAudio
+            PicRec.Visible = False
+            Exit Sub
+        End If
+
+        LblInfo.Caption = "Prosesando..."
+        DoEvents
+
+        If GetAudio(sWavBase64) Then
+            sRet = SpeechToText(sWavBase64)
+        End If
+
+        If Len(sRet) Then
+            PicRec.Visible = False
+            Text1(0).Text = sRet
+            Text1_KeyPress 0, vbKeyReturn
+        Else
+            LblInfo.Caption = "Sin resultados."
+            DoEvents
+            Sleep 500
+            PicRec.Visible = False
+        End If
+
+    End Sub
+
+    Private Sub PicButton_Click(Index As Integer)
+        If Index = 0 Then
+            If ucList1.ListIndex > -1 Then
+                MsgBox ucList1.ItemData(ucList1.ListIndex)
+            Else
+                Beep
+            End If
+        Else
+            Unload Me
+        End If
+    End Sub
+
+    Private Sub PicButton_GotFocus(Index As Integer)
+        cShadowButton(Index).BorderColor = &HFF9033
+        cShadowButton(Index).ShadowOpacity = 30
+        cShadowButton(Index).Refresh
+    End Sub
+
+    Private Sub PicButton_KeyDown(Index As Integer, KeyCode As Integer, Shift As Integer)
+        If KeyCode = vbKeyReturn Then PicButton_Click Index
+    End Sub
+
+    Private Sub PicButton_LostFocus(Index As Integer)
+        cShadowButton(Index).BorderColor = PicButton(Index).BackColor
+        cShadowButton(Index).ShadowOpacity = 0
+        cShadowButton(Index).Refresh
+    End Sub
+
+    Private Sub PicButton_Paint(Index As Integer)
+        With PicButton(Index)
+            .CurrentX = .ScaleWidth / 2 - .TextWidth(.Tag) / 2
+            .CurrentY = .ScaleHeight / 2 - .TextHeight(.Tag) / 2
+            PicButton(Index).Print .Tag
+        End With
+    End Sub
+
+    Private Sub Text1_Change(Index As Integer)
+        Dim JB As JsonBag
+        Dim i As Long
+        Dim sUrl As String
+
+        If Index = 0 Then
+            sUrl = "http://suggestqueries.google.com/complete/search?output=firefox&client=firefox&&ds=yt&hl=eses&q=" & Text1(0).Text
+
+            ucList2.Clear
+            If LoadJson(sUrl, JB) Then
+                For i = 1 To JB.Item(2).Count
+                    ucList2.AddItem JB.Item(2).Item(i)
+                Next
+            End If
+        End If
+
+    End Sub
+
+    Private Sub Text1_KeyDown(Index As Integer, KeyCode As Integer, Shift As Integer)
+        If Index = 0 And KeyCode = vbKeyDown Then
+            If ucList1.ListCount > 0 Then
+                ucList1.ListIndex = ucList1.ListIndex + 1
+            End If
+            ucList1.SetFocus
+        End If
+    End Sub
+
+    Private Sub Text1_KeyPress(Index As Integer, KeyAscii As Integer)
+        If Index = 0 And KeyAscii = 13 Then
+            KeyAscii = 0
+            ucList1.Clear
+            ucList1.ImageListClear
+            ImgIndex = 0
+            PagePos = 1
+            Search
+        End If
+    End Sub
+
+    Private Sub Text1_GotFocus(Index As Integer)
+        With cShadowTxt(Index)
+            .BorderColor = &HFF9033
+            .ShadowColor = &HFF9033
+            .Refresh
+        End With
+    End Sub
+
+    Private Sub Text1_LostFocus(Index As Integer)
+        With cShadowTxt(Index)
+            .BorderColor = vbActiveBorder
+            .ShadowColor = vbActiveBorder
+            .Refresh
+        End With
+    End Sub
+
+    Private Sub ucList1_IndexChange()
+        Text1(1).Text = ucList1.ItemData(ucList1.ListIndex)
+    End Sub
+
+    Private Sub ucList1_ScrollBottom()
+        PagePos = PagePos + 10
+        Call Search
+    End Sub
+
+    Private Sub ucList2_PostAutoComplete()
+        Text1_KeyPress 0, vbKeyReturn
+    End Sub
+
+    Private Function SpeechToText(sWavBase64 As String) As String
+        Dim sUrl As String
+        Dim JB As JsonBag
+        Dim xmlhttp As Object
+        Dim sText As String
+        Dim i As Long
+        Dim sBody As String
+
+        If Len(sWavBase64) = 0 Then Exit Function
+
+        sUrl = "https://speech.googleapis.com/v1p1beta1/speech:recognize?key=AIzaSyBqKVSTAwPrDBF6LxXxCchDg6hsvHCaL-M"
+        Set xmlhttp = CreateObject("MSXML2.ServerXMLHTTP")
+        xmlhttp.Open "POST", sUrl, False
+        sBody = "{'audio': {'content':'" & sWavBase64 & "'},'config':{'enableAutomaticPunctuation':true,'encoding':'LINEAR16','languageCode':'es-ES','model':'default'}}"
+        xmlhttp.send sBody
+
+        Set JB = New JsonBag
+
+        JB.JSON = xmlhttp.responseText
+
+        If Not JB.Exists("results") Then Exit Function
+
+        For i = 1 To JB.Item("results").Count
+            sText = sText & JB.Item("results")(i).Item("alternatives")(1).Item("transcript") & vbCrLf
+        Next
+        Set xmlhttp = Nothing
+        SpeechToText = sText
+
+    End Function
+
+    Private Function Mci(ByVal sCommand As String) As Long
+        Mci = mciSendStringW(StrPtr(sCommand), 0, 0, 0)
+    End Function
+
+    Private Function RecAudio() As Long
+        Dim COMANDO As String
+        Const BITS As Integer = 16
+        Const CANALES As Integer = 1
+        Const MUESTRAS As Long = 11025
+        Const PROMEDIO As Long = BITS * CANALES * MUESTRAS / 8
+        Const ALINEACION As Long = BITS * CANALES / 8
+
+        COMANDO = "set capture bitspersample " & BITS & " channels " & CANALES & " alignment " & ALINEACION & " samplespersec " & _
+        MUESTRAS & " bytespersec " & PROMEDIO & " format tag pcm wait"
+        Call Mci("close capture")
+        Call Mci("open new type waveaudio alias capture")
+        Call Mci(COMANDO)
+        RecAudio = Mci("record capture")
+    End Function
+
+    Private Sub CancelAudio()
+        Call Mci("stop capture")
+        Call Mci("close capture")
+    End Sub
+
+    Private Function GetAudio(sRetBase64 As String) As Boolean
+        Dim bData() As Byte
+        Dim FF As Integer
+        Dim sPath As String
+
+        On Error Resume Next
+        sPath = Environ$("Temp") & "\temp.wav"
+        Call Mci("stop capture")
+        Call Mci("save capture " & sPath)
+        Call Mci("close capture")
+
+        If Len(Dir$(sPath)) = 0 Then Exit Function
+
+        FF = FreeFile
+        Open sPath For Binary As FF
+            ReDim bData(LOF(FF) - 1)
+            Get FF, , bData
+        Close FF
+
+        Kill sPath
+        If Base64Encode(bData, sRetBase64) Then
+            GetAudio = Err.Number = 0
+        End If
+    End Function
+
+    Private Function Base64Encode(ByRef bvSrc() As Byte, ByRef sOut As String) As Boolean
+        Dim lLenOut As Long
+
+        ' calcula el tamano del buffer (incluye el nulo final)
+        Call CryptBinaryToStringW(VarPtr(bvSrc(0)), UBound(bvSrc) + 1, _
+                                  CRYPT_STRING_BASE64 Or CRYPT_STRING_NOCRLF, 0, lLenOut)
+        If lLenOut = 0 Then Exit Function
+
+        sOut = String$(lLenOut, vbNullChar)
+
+        ' convierte a base64
+        If CryptBinaryToStringW(VarPtr(bvSrc(0)), UBound(bvSrc) + 1, _
+                                CRYPT_STRING_BASE64 Or CRYPT_STRING_NOCRLF, StrPtr(sOut), lLenOut) Then
+            sOut = Left$(sOut, lLenOut)
+            Base64Encode = True
+        End If
+    End Function
+
+End Class

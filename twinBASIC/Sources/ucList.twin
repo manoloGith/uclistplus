@@ -2415,6 +2415,17 @@ Class ucList
 
         Edit_SetText vbNullString
 
+        If Ambient.UserMode Then
+            ' Control creado sin propiedades guardadas (p. ej. en un formulario cuyo
+            ' .tbform no incluye _IPersistStreamData): estilo DropDown, oculto y sin
+            ' elementos de ejemplo. El estilo se puede cambiar desde codigo.
+            m_Index = -1
+            isWinChild = False
+            EnsureSubclass
+            UserControl.Extender.Visible = False
+            Exit Sub
+        End If
+
         For i = 1 To 7
             If i Mod 3 = 0 Then
                 AddItem "-"
@@ -2424,7 +2435,7 @@ Class ucList
         Next
         m_Index = 3
 
-        If Not Ambient.UserMode Then DrawDesignIcon
+        DrawDesignIcon
     End Sub
 
     Private Sub UserControl_OLECompleteDrag(Effect As Long)
@@ -2651,7 +2662,8 @@ Class ucList
 
             If isWinChild Then Call Update(False)
         Else
-            UserControl.Size 32 * Screen.TwipsPerPixelX, 32 * Screen.TwipsPerPixelY
+            ' En VB6 se forzaba 32x32 en diseno; aqui se respeta el tamano del
+            ' formulario para no perder la geometria de los .tbform.
             DrawDesignIcon
         End If
 
@@ -2704,6 +2716,24 @@ Class ucList
 
     Public Property Let ListStyle(ByVal New_Value As eListStyle)
 
+        If Ambient.UserMode Then
+            ' En ejecucion (twinBASIC): permite configurar el estilo desde codigo
+            ' sin cambiar el tamano que tiene el control en el formulario.
+            If bShow Then HideList
+            m_ListStyle = New_Value
+            isWinChild = (New_Value = StyleListBox)
+            EnsureSubclass
+            If isWinChild Then
+                m_HotItem = -1
+                UserControl.Extender.Visible = True
+                Update
+            Else
+                cShadow.HideBorders
+                UserControl.Extender.Visible = False
+            End If
+            Exit Property
+        End If
+
         If New_Value = StyleListBox Then
             isWinChild = True
             UserControl.Size 150 * Screen.TwipsPerPixelX, 200 * Screen.TwipsPerPixelY
@@ -2714,9 +2744,7 @@ Class ucList
         m_ListStyle = New_Value
 
         UserControl.PropertyChanged "ListStyle"
-        If Not Ambient.UserMode Then
-            If isWinChild Then Update Else DrawDesignIcon
-        End If
+        If isWinChild Then Update Else DrawDesignIcon
     End Property
 
     Public Function ItemHitest(ByVal Y As Long) As Long

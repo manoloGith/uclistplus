@@ -1,0 +1,250 @@
+[Description("")]
+[FormDesignerId("E0021C12-0ADD-5AC5-A616-7FB7F3A570DE")]
+[PredeclaredId]
+Class FrmDropDownList
+
+    Option Explicit
+
+    Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
+
+    Private Type RECT
+        Left As Long
+        Top As Long
+        Right As Long
+        Bottom As Long
+    End Type
+
+    ' Propiedades de diseno de los ucList (en VB6 estaban en el .frm).
+    ' Los 5 son StyleDropDown (el valor por defecto); solo cambia FindTextColor.
+    Private Sub ApplyDesignProperties()
+        ucList1.FindTextColor = vbHighlight
+        ucList2.FindTextColor = vbHighlight
+        ucList3.FindTextColor = vbHighlight
+        ucList4.FindTextColor = vbHighlight
+        ucList5.FindTextColor = vbHighlight
+    End Sub
+
+    '--------------EJEMPLO 1
+
+    Private Sub Example1()
+        Dim MyLine As String
+        Dim i As Long, FF As Integer
+
+        With ucList1
+            .ImageListInitialize 40, 40
+            .ImagesRadius = 37
+            .SubTitleVisible = True
+            .ItemHeight = 48
+            .MaxVisibleItems = 5
+            .ListDesign = GoogleDesign     'en VB6 decia .ListStyle = GoogleDesign
+            .DrawSeparatorLine = True
+
+            For i = 1 To 9
+                .ImageListAddImage App.Path & "\Caras\" & i & ".jpg"
+            Next
+            i = 0
+            FF = FreeFile
+            Open App.Path & "\Personal.txt" For Input As #FF
+                Do While Not EOF(FF)
+                    Line Input #FF, MyLine
+                    .AddItem Split(MyLine, ", ")(0), i, , Split(MyLine, ", ")(1)
+                    i = i + 1
+                Loop
+            Close FF
+        End With
+    End Sub
+
+    Private Sub Command1_Click()
+        Dim tR As RECT
+        GetWindowRect Command1.hWnd, tR
+        ucList1.ShowList tR.Left, tR.Bottom
+    End Sub
+
+    Private Sub ucList1_ItemClick()
+        Command1.Caption = ucList1.ItemText(ucList1.ListIndex)
+    End Sub
+    '============== FIN EJEMPLO1
+
+    '-------------- EJEMPLO 2
+    Private Sub Example2()
+        Dim MyLine As String
+        Dim i As Long, FF As Integer
+
+        With ucList2
+            .ImageListInitialize 16, 16
+            .UseMonocromeIcons = True
+            .ItemHeight = 32
+            .ShowFilter = True
+            .MaxVisibleItems = 8
+            .ImageListAddImage App.Path & "\Vectores PNG\8.png"
+
+            i = 0
+            FF = FreeFile
+            Open App.Path & "\Nombres.txt" For Input As #FF
+                Do While Not EOF(FF)
+                    Line Input #FF, MyLine
+                    If InStr(MyLine, ": ") = 0 Then
+                        .OpenGroup MyLine
+                    Else
+                        .AddItem Split(MyLine, ": ")(0), 0, , Split(MyLine, ": ")(1)
+                    End If
+                Loop
+            Close FF
+
+        End With
+    End Sub
+
+    Private Sub Command2_Click()
+        Dim tR As RECT
+        GetWindowRect Command2.hWnd, tR
+        ucList2.ShowList tR.Left, tR.Bottom, 0, tR.Top
+    End Sub
+
+    Private Sub ucList2_ItemClick()
+        Command2.Caption = ucList2.ItemText(ucList2.ListIndex)
+        Label1.Caption = ucList2.ItemSubText(ucList2.ListIndex)
+    End Sub
+    '============== FIN EJEMPLO2
+
+    '-------------- EJEMPLO 3
+    Private Sub Example3()
+        Dim MyLine As String
+        Dim i As Long, FF As Integer
+
+        With ucList3
+
+            .UseMonocromeIcons = True
+            .ItemHeight = 32
+            .ShowFilter = True
+            .MaxVisibleItems = 7
+            .MultiSelect = True
+
+            i = 0
+            FF = FreeFile
+            Open App.Path & "\Groups.txt" For Input As #FF
+                Do While Not EOF(FF)
+                    Line Input #FF, MyLine
+                    i = i + 1
+                    If Left$(MyLine, 1) = "-" Then
+                        .OpenGroup Mid$(MyLine, 2), 0
+                    Else
+                        .AddItem MyLine
+                    End If
+                Loop
+            Close FF
+        End With
+
+    End Sub
+
+    Private Sub Command3_Click()
+        Dim tR As RECT
+        GetWindowRect Command3.hWnd, tR
+        ucList3.ShowList tR.Left, tR.Bottom, 0, tR.Top
+    End Sub
+
+    Private Sub ucList3_ItemClick()
+        Dim i As Long, lCount As Long
+        For i = 0 To ucList3.ListCount - 1
+            If ucList3.ItemSelected(i) Then
+                lCount = lCount + 1
+            End If
+        Next
+        Command3.Caption = "selecionados " & lCount
+    End Sub
+    '============== FIN EJEMPLO3
+
+    '-------------- EJEMPLO 4
+    Private Sub Example4()
+        Dim i As Long
+        With ucList4
+            .BorderRadius = 0
+            .ListDesign = MicrosoftDesign
+            .ItemHeight = Command4.Height / ucList4.GetWindowDpi
+            .ListWidth = Command4.Width / ucList4.GetWindowDpi
+            .SelectionColor = vbBlack
+            .Shadow.BorderColor = vbBlack
+            .MaxVisibleItems = 5
+
+            For i = 1 To 10
+                .AddItem "Item " & i
+            Next
+
+        End With
+    End Sub
+
+    'Mouse Down-----------\/
+    Private Sub Command4_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim tR As RECT
+        If ucList4.IsListVisible Then Exit Sub
+        GetWindowRect Command4.hWnd, tR
+        If ucList4.ListIndex > -1 Then
+            tR.Bottom = tR.Bottom - ucList4.GetItemTop(ucList4.ListIndex) - (ucList4.ItemHeight * ucList4.GetWindowDpi)
+        End If
+        ucList4.ShowList tR.Left, tR.Bottom, 0, tR.Top
+    End Sub
+
+    Private Sub ucList4_ItemClick()
+        Command4.Caption = ucList4.ItemText(ucList4.ListIndex)
+    End Sub
+    '============== FIN EJEMPLO4
+
+    '-------------- EJEMPLO 5
+    Private Sub Example5()
+        Dim i As Long
+        With ucList5
+            .ImageListInitialize 16, 16
+            .UseMonocromeIcons = True
+            .ItemHeight = 32
+            .SelectionColor = &H8CAD42
+            .BackColor = &H424242
+
+            .Shadow.BorderColor = vbGrayText
+            For i = 1 To 8
+                .ImageListAddImage App.Path & "\Vectores PNG\" & i & ".png"
+            Next
+
+            .ItemHeight = Command5.Height / ucList5.GetWindowDpi
+            .ListWidth = Command5.Width / ucList5.GetWindowDpi
+            .MaxVisibleItems = 5
+            For i = 1 To 8
+                If i Mod 3 = 0 Then
+                    .AddItem "-"
+                Else
+                    .AddItem "Item " & i, i - 1, , , , i Mod 4 = 0
+                End If
+            Next
+
+        End With
+    End Sub
+
+    'Mouse Down-----------\/
+    Private Sub Command5_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim tR As RECT
+        If ucList5.IsListVisible Then Exit Sub
+        GetWindowRect Command5.hWnd, tR
+
+        ucList5.ShowList tR.Left, tR.Bottom, 0, tR.Top
+    End Sub
+
+    Private Sub ucList5_ItemClick()
+        Dim i As Long, lCount As Long
+        For i = 0 To ucList5.ListCount - 1
+            If ucList5.ItemSelected(i) Then
+                lCount = lCount + 1
+            End If
+        Next
+        If lCount > 5 Then ucList5.ItemSelected(ucList5.ListIndex) = False
+        Command5.Caption = ucList5.ItemText(ucList5.ListIndex)
+    End Sub
+    '============== FIN EJEMPLO5
+
+    Private Sub Form_Load()
+        ApplyDesignProperties
+        Example1
+        Example2
+        Example3
+        Example4
+        Example5
+    End Sub
+
+End Class

@@ -1,0 +1,153 @@
+[Description("")]
+[FormDesignerId("2E917FF5-1136-5A48-829B-4D2EA791CDED")]
+[PredeclaredId]
+Class FrmMenu
+
+    Option Explicit
+
+    Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
+
+    Private Type RECT
+        Left As Long
+        Top As Long
+        Right As Long
+        Bottom As Long
+    End Type
+
+    ' Propiedades de diseno de los ucList (en VB6 estaban en el .frm).
+    Private Sub ApplyDesignProperties()
+        With ucList1
+            .ListStyle = StyleMenu
+            .FindTextColor = vbHighlight
+            .LineColor = 13487565
+        End With
+        With ucList2
+            .ListStyle = StyleMenu
+            .FindTextColor = vbHighlight
+            .LineColor = 13487565
+        End With
+        With ucList3
+            .ListStyle = StyleMenu
+            .FindTextColor = vbHighlight
+            .LineColor = 13487565
+        End With
+        With ucList4
+            .ListStyle = StyleMenu
+            .FindTextColor = vbHighlight
+            .LineColor = 13487565
+        End With
+    End Sub
+
+    Private Sub Command1_Click()
+        Dim tR As RECT
+        GetWindowRect Command1.hWnd, tR
+        ucList1.ListIndex = -1
+        ucList1.ShowList tR.Left, tR.Bottom, 0, tR.Top
+    End Sub
+
+    Private Sub Command2_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim tR As RECT
+        If ucList1.IsListVisible Then Exit Sub
+        GetWindowRect Command2.hWnd, tR
+        ucList2.ListIndex = -1
+        ucList2.ShowList tR.Left, tR.Bottom, 0, tR.Top
+    End Sub
+
+    Private Sub Command3_MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim tR As RECT
+        ucList2.HideList
+        If ucList1.IsListVisible = False Then
+            GetWindowRect Command3.hWnd, tR
+            ucList1.ListIndex = -1
+            ucList1.ShowList tR.Left, tR.Bottom, 0, tR.Top
+        End If
+    End Sub
+
+    Private Sub Command4_MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim tR As RECT
+        ucList1.HideList
+        If ucList2.IsListVisible = False Then
+            GetWindowRect Command4.hWnd, tR
+            ucList2.ListIndex = -1
+            ucList2.ShowList tR.Left, tR.Bottom, 0, tR.Top
+        End If
+    End Sub
+
+    Private Sub Form_Load()
+        Dim i As Long
+
+        ApplyDesignProperties
+
+        With ucList1
+
+            .ImageListInitialize 16, 16
+            .UseMonocromeIcons = True
+            .ListWidth = 200
+            .ItemHeight = 32
+            .Shadow.ShadowOffsetX = 2
+            .Shadow.ShadowOffsetY = 2
+
+            For i = 1 To 8
+                .ImageListAddImage App.Path & "\Vectores PNG\" & i & ".png"
+            Next
+
+            .AddItem "Ci&ntia" & vbTab & "Ctrl+C", 1, , "Mama"
+            .AddItem "&Mateo" & vbTab & "Ctrl+M", 2, , "Hijo"
+            .AddItem "Leandr&o" & vbTab & "Ctrl+L", 3, , "Papa"
+            .AddSubMenu "SubMenu", ucList2, 4
+            .AddItem "-"
+            .AddItem "Poto&", , , "Gato"
+            .ItemTextColor(2) = vbRed
+            .ItemSubTextColor(2) = vbGreen
+            .ItemBackColor(2) = vbYellow
+        End With
+
+        With ucList2
+            .ListWidth = 100
+            .ItemHeight = 24
+
+            .Shadow.ShadowOffsetX = 2
+            .Shadow.ShadowOffsetY = 2
+            For i = 1 To 3
+                .AddItem "Item " & i
+            Next
+            .AddSubMenu "SubMenu", ucList3
+        End With
+
+        With ucList3
+            .ListWidth = 200
+            .ItemHeight = 24
+
+            .Shadow.ShadowOffsetX = 2
+            .Shadow.ShadowOffsetY = 2
+            For i = 1 To 3
+                .AddItem "Item " & i
+            Next
+            .AddSubMenu "SubMenu", ucList4
+        End With
+
+        With ucList4
+            .ListWidth = 100
+            .ItemHeight = 24
+
+            .Shadow.ShadowOffsetX = 2
+            .Shadow.ShadowOffsetY = 2
+            For i = 1 To 10
+                .AddItem "Item " & i
+            Next
+        End With
+    End Sub
+
+    Private Sub ucList1_ItemClick()
+        Me.Caption = ucList1.ItemText(ucList1.ListIndex)
+    End Sub
+
+    Private Sub ucList2_ItemClick()
+        Me.Caption = ucList2.ItemText(ucList2.ListIndex)
+    End Sub
+
+    Private Sub ucList3_ItemClick()
+        Me.Caption = ucList3.ItemText(ucList3.ListIndex)
+    End Sub
+
+End Class

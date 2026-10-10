@@ -12,6 +12,10 @@ métodos públicos** que el `ucList.ctl` original y compila tanto en **32 como e
 | `Sources/ucList.tbcontrol` | Diseñador del UserControl (vacío: no contiene controles hijos) |
 | `Sources/ClsShadow.twin` | Clase de sombra/borde (`ucList.Shadow`), convertida a 64 bits |
 | `Sources/mUcListHelpers.twin` | Módulo de subclasificación (`SetWindowSubclass`) |
+| `Sources/ucSelect.twin` + `.tbcontrol` | Control ComboBox de ejemplo (usa un `ucList` interno) |
+| `Sources/JsonBag.twin` | Parser JSON usado por los ejemplos `FrmComboBox` y `FrmGoogleSearch` |
+| `Sources/Forms/*.tbform` + `*.twin` | Los 10 formularios de ejemplo recreados |
+| `Demo/*.bmp` | Imágenes de `FrmGoogleSearch` extraídas de su `.frx` |
 
 `ucScrollbar.ctl` y `clsSubClass.cls` **ya no son necesarios**.
 
@@ -44,6 +48,68 @@ Private Sub ucList1_ItemClick()
     Debug.Print ucList1.Text
 End Sub
 ```
+
+## Proyecto de ejemplo (formularios)
+
+Los 10 formularios de ejemplo están recreados en `Sources/Forms`. La disposición de
+los controles es la del `.frm` original, convertida a píxeles.
+
+| Formulario | Qué muestra |
+|---|---|
+| `FrmMain` | Menú principal: lista que abre los demás ejemplos (**objeto de inicio**) |
+| `FrmAutocomplete` | Autocompletar varios `TextBox` y un `ucSelect` con lista de países |
+| `FrmComboBox` | Tres `ucSelect` encadenados (provincias/departamentos/localidades) con datos de una API |
+| `FrmCustomDraw` | Elementos dibujados a mano con el evento `ItemCustomDraw` |
+| `FrmDragDrop` | Arrastrar y soltar elementos entre dos listas (OLE) |
+| `FrmDropDownList` | Cinco listas desplegables lanzadas desde botones |
+| `FrmGoogleSearch` | Búsqueda de imágenes con autocompletado en tiempo real y dictado por voz |
+| `FrmListBox` | Cinco `ucList` con `ListStyle = StyleListBox` |
+| `FrmMenu` | Menús y submenús con `ListStyle = StyleMenu` |
+| `FrmShadow` | Uso de `ClsShadow` en un formulario sin bordes |
+
+### Cómo montarlo
+1. Crea un proyecto *Standard EXE* llamado **`ucListPlus`**. En los `.tbform`, los
+   controles de usuario se identifican como `ucListPlus.ucList` y
+   `ucListPlus.ucSelect`. Si tu proyecto tiene otro nombre, cambia ese prefijo en
+   los `.tbform` con buscar y reemplazar.
+2. Importa todos los archivos de `Sources` y de `Sources/Forms`.
+3. En *Project → Settings*, elige **`FrmMain`** como objeto de inicio.
+4. Copia junto al ejecutable (o en la carpeta del proyecto, que es `App.Path` al
+   depurar) los archivos de datos del ejemplo original. No están en este
+   repositorio: `VB6.png`, `Personal.txt`, `Nombres.txt`, `Groups.txt`,
+   `Country.txt` y las carpetas `Caras\` y `Vectores PNG\`. Copia también los dos
+   `.bmp` de `Demo/`.
+
+### Propiedades de diseño de los `ucList`
+twinBASIC guarda las propiedades de un UserControl en un `.tbform` como un bloque
+binario (`_IPersistStreamData`) con un formato interno que no se puede generar de
+forma fiable a mano. Por eso los `.tbform` solo guardan la posición, el tamaño y la
+visibilidad de cada `ucList`/`ucSelect`. Las propiedades que en VB6 estaban en el `.frm`
+(`ListStyle`, colores, `ListWidth`, `OLEDropMode`, …) se aplican por código en
+`ApplyDesignProperties`, al principio de cada `Form_Load`.
+
+Para que esto funcione, `ucList` tiene tres cambios:
+- En ejecución, `ListStyle` se puede asignar por código. Muestra u oculta el control
+  y no cambia su tamaño.
+- Si se crea sin propiedades guardadas (`InitProperties` en ejecución), arranca en
+  modo desplegable, oculto y sin los elementos de ejemplo.
+- En el diseñador ya no se fuerza el tamaño de 32×32 en los estilos desplegable y menú,
+  para que se mantenga la geometría del formulario.
+
+Si abres un formulario en el diseñador de twinBASIC y lo guardas, el IDE añadirá el
+bloque binario y a partir de ahí las propiedades se pueden editar también en la
+ventana de propiedades.
+
+### Otros cambios en los formularios
+- `FrmShadow`: el `CommonDialog` (`COMDLG32.OCX`) se reemplazó por la API
+  `ChooseColorW`, y las dos `Line` por `Label` de 1 píxel de alto.
+- `FrmGoogleSearch`: las imágenes del `.frx` se cargan en `Form_Load` desde
+  `GoogleSearch_Microphone.bmp` y `GoogleSearch_Search.bmp`. `mciSendString` y la
+  codificación base64 usan las versiones Unicode (`W`) de la API.
+- Todas las `Declare` de los formularios usan `PtrSafe`/`LongPtr`.
+- Se corrigieron pequeños errores del original: `EOF(1)` en lugar de `EOF(FF)`,
+  `.ListStyle = GoogleDesign` en lugar de `.ListDesign`, `CloseThemeData` que nunca
+  se llamaba y el radio de la región al cambiar el ancho en `FrmShadow`.
 
 ## Qué cambió respecto a la versión VB6
 
@@ -99,5 +165,8 @@ Estos cambios no afectan al código en 32 bits:
 - Este código no se pudo compilar en el entorno en que se convirtió, porque
   twinBASIC solo funciona en Windows. Si al importarlo aparece algún error de
   compilación, suele bastar con ajustes menores.
-- Los formularios de ejemplo de VB6 (`Frm*.frm`) se pueden importar en twinBASIC
-  con su importador de proyectos VB6. Cambia `Proyecto1.ucList` por este `ucList`.
+- Los `.tbform` se generaron a partir de los `.frm` originales. El CLSID del
+  `PictureBox` (`{33AD4ED0-6699-11CF-B70C-00AA0060D393}`) se dedujo de la secuencia de
+  GUID de los controles de VB6 y no se pudo comprobar en un `.tbform` real. Si
+  twinBASIC no reconoce los `PictureBox` al abrir un formulario, borra y vuelve a
+  añadir esos controles en el diseñador con el mismo nombre e índice.

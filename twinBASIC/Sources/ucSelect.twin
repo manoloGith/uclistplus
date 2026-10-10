@@ -1,0 +1,283 @@
+[Description("ucSelect - ComboBox basado en ucList")]
+[FormDesignerId("892312E6-2A0E-4543-8FE5-5F7F91269352")]
+[ClassId("1035BF05-51B4-45E1-AA7F-C36A1FDB596E")]
+[InterfaceId("985E817F-D392-4533-B2D3-D46B868FD9D9")]
+[EventInterfaceId("3182D133-6F83-4061-9707-44FF6529560F")]
+[COMControl]
+Class ucSelect
+
+    '-------------------------
+    'Name: ucSelect (ejemplo de ucListPlus)
+    'Autor: Leandro Ascierto
+    'Conversion a twinBASIC (32/64 bits):
+    ' - clsSubClass reemplazado por SetWindowSubclass (mUcListHelpers).
+    '-------------------------
+
+    Option Explicit
+
+    Private Declare PtrSafe Function DrawText Lib "user32" Alias "DrawTextW" (ByVal hDC As LongPtr, ByVal lpStr As LongPtr, ByVal nCount As Long, ByRef lpRect As RECT, ByVal wFormat As Long) As Long
+    Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
+    Private Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (ByRef Destination As Any, ByRef Source As Any, ByVal Length As LongPtr)
+
+    Private Type RECT
+        Left As Long
+        Top As Long
+        Right As Long
+        Bottom As Long
+    End Type
+
+    Public Event ItemClick()
+
+    Private Const DT_SINGLELINE     As Long = &H20
+    Private Const DT_VCENTER        As Long = &H4
+    Private Const DT_CENTER         As Long = &H1
+    Private Const WM_MOUSEWHEEL     As Long = &H20A
+    Private Const WM_NCDESTROY      As Long = &H82
+
+    Private sChrArrowDown   As String
+    Private sChrArrowUp     As String
+    Private cShadow         As ClsShadow
+    Private m_Text          As String
+    Private DpiFactor       As Single
+    Private lMargin         As Long
+    Private m_hWndSubclassed As LongPtr
+
+    Public Property Get List() As ucList
+        Set List = ucList1
+    End Property
+
+    Public Property Get BackColor() As OLE_COLOR
+        BackColor = UserControl.BackColor
+    End Property
+
+    Public Property Let BackColor(ByVal New_Value As OLE_COLOR)
+        UserControl.BackColor = New_Value
+        DrawArrow
+        If Ambient.UserMode Then cShadow.BackColor = New_Value
+        UserControl.PropertyChanged "BackColor"
+    End Property
+
+    Public Property Get Font() As StdFont
+        Set Font = UserControl.Font
+    End Property
+
+    Public Property Set Font(new_Font As StdFont)
+        With UserControl.Font
+            .Name = new_Font.Name
+            .Size = new_Font.Size
+            .Bold = new_Font.Bold
+            .Italic = new_Font.Italic
+            .Underline = new_Font.Underline
+            .Strikethrough = new_Font.Strikethrough
+            .Weight = new_Font.Weight
+            .Charset = new_Font.Charset
+        End With
+        UserControl.PropertyChanged "Font"
+        UserControl.Refresh
+    End Property
+
+    Public Property Get Text() As String
+        Text = m_Text
+    End Property
+
+    Public Property Let Text(ByVal New_Value As String)
+        m_Text = New_Value
+        UserControl.Refresh
+        UserControl.PropertyChanged "Text"
+    End Property
+
+    Private Sub ucList1_IndexChange()
+        ucList1_ItemClick
+    End Sub
+
+    Private Sub ucList1_ItemClick()
+        m_Text = ucList1.ItemText(ucList1.ListIndex)
+        UserControl.Refresh
+        RaiseEvent ItemClick
+    End Sub
+
+    Private Sub UserControl_EnterFocus()
+        With cShadow
+            .ShadowOpacity = 30
+            .BorderColor = &HFF9033
+            .Refresh
+        End With
+    End Sub
+
+    Private Sub UserControl_ExitFocus()
+        With cShadow
+            .ShadowOpacity = 0
+            .BorderColor = vbActiveBorder
+            .Refresh
+        End With
+    End Sub
+
+    Private Sub UserControl_Initialize()
+        Set cShadow = New ClsShadow
+        DpiFactor = cShadow.GetWindowsDPI
+        lMargin = 8 * DpiFactor
+
+        Picture1.Font.Name = "Segoe MDL2 Assets"
+
+        If Picture1.Font.Name = "Segoe MDL2 Assets" Then
+            sChrArrowDown = ChrW2(&HE011)
+            sChrArrowUp = ChrW2(&HE010)
+        Else
+            Picture1.Font.Name = "Wingdings 3"
+            sChrArrowDown = Chr$(113)
+            sChrArrowUp = Chr$(112)
+        End If
+        Picture1.ForeColor = vbBlack
+        Picture1.FillColor = Picture1.ForeColor
+        Picture1.Font.Size = 11
+        Picture1.AutoRedraw = True
+
+        DrawArrow
+    End Sub
+
+    Private Sub DrawArrow()
+        Dim tR As RECT
+
+        Picture1.BackColor = UserControl.BackColor
+        Picture1.Cls
+        tR.Right = Picture1.ScaleWidth
+        tR.Bottom = Picture1.ScaleHeight
+        DrawText Picture1.hDC, StrPtr(sChrArrowDown), 1, tR, DT_SINGLELINE Or DT_VCENTER Or DT_CENTER
+        Picture1.Refresh
+    End Sub
+
+    Public Function ChrW2(ByVal CharCode As Long) As String
+        Const POW10 As Long = 2 ^ 10
+        If CharCode <= &HFFFF& Then
+            ChrW2 = ChrW$(CharCode)
+        Else
+            ChrW2 = ChrW$(&HD800& + (CharCode And &HFFFF&) \ POW10) & _
+                    ChrW$(&HDC00& + (CharCode And (POW10 - 1)))
+        End If
+    End Function
+
+    Private Sub UserControl_KeyDown(KeyCode As Integer, Shift As Integer)
+        If KeyCode = vbKeyF4 Then UserControl_MouseDown vbLeftButton, 0, 0, 0
+        ucList1.SetKeyDown KeyCode
+    End Sub
+
+    Private Sub UserControl_KeyPress(KeyAscii As Integer)
+        ucList1.SetKeyPress KeyAscii
+    End Sub
+
+    Private Sub UserControl_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim tR As RECT
+        Dim M As Long, B As Long
+
+        If ucList1.IsListVisible Then
+            ucList1.HideList
+            Exit Sub
+        End If
+        GetWindowRect UserControl.hWnd, tR
+        M = cShadow.Margin * DpiFactor
+        B = 2 * DpiFactor
+        ucList1.ShowList tR.Left - M, tR.Bottom + M + B, 0, tR.Top - M - B
+    End Sub
+
+    Private Sub UserControl_Paint()
+        Dim tR As RECT
+
+        If Len(m_Text) > 0 Then
+            With tR
+                .Right = UserControl.ScaleWidth - Picture1.Width
+                .Bottom = UserControl.ScaleHeight
+                .Left = lMargin * 2
+            End With
+            If ucList1.ImageListCount > 0 And ucList1.ListIndex > -1 Then
+
+                ucList1.ImageListDraw UserControl.hDC, ucList1.ItemIcon(ucList1.ListIndex) + 1, _
+                    tR.Left, UserControl.ScaleHeight / 2 - ucList1.ImgListHeight / 2, _
+                    ucList1.ImgListWidth, ucList1.ImgListHeight
+
+                tR.Left = tR.Left + ucList1.ImgListWidth + lMargin
+            End If
+
+            DrawText UserControl.hDC, StrPtr(m_Text), -1, tR, DT_SINGLELINE Or DT_VCENTER
+        End If
+    End Sub
+
+    Private Sub UserControl_InitProperties()
+        If Ambient.UserMode Then EnsureSubclass
+    End Sub
+
+    Private Sub UserControl_ReadProperties(PropBag As PropertyBag)
+        With PropBag
+            Me.BackColor = .ReadProperty("BackColor", UserControl.BackColor)
+            Set UserControl.Font = .ReadProperty("Font", Ambient.Font)
+        End With
+
+        If Ambient.UserMode Then EnsureSubclass
+    End Sub
+
+    Private Sub UserControl_WriteProperties(PropBag As PropertyBag)
+        With PropBag
+            Call .WriteProperty("BackColor", UserControl.BackColor)
+            Call .WriteProperty("Font", UserControl.Font)
+        End With
+    End Sub
+
+    Private Sub UserControl_Resize()
+        Picture1.Move UserControl.ScaleWidth - UserControl.ScaleHeight, 0, UserControl.ScaleHeight, UserControl.ScaleHeight
+        DrawArrow
+    End Sub
+
+    Private Sub UserControl_Show()
+        If Ambient.UserMode Then
+            EnsureSubclass
+            With cShadow
+                .ShadowColor = &HFF9033
+                .ShadowSize = 5
+                .Margin = 3
+                .ShadowOpacity = 0
+                .ShowBorders UserControl.hWnd, True
+            End With
+        End If
+    End Sub
+
+    Private Sub UserControl_Terminate()
+        If m_hWndSubclassed <> 0 Then
+            UCL_UnsubclassSelect m_hWndSubclassed, ObjPtr(Me)
+            m_hWndSubclassed = 0
+        End If
+        Set cShadow = Nothing
+    End Sub
+
+    '----------------------------------------------------------------------
+    ' Subclasificacion (rueda del raton), antes clsSubClass
+    '----------------------------------------------------------------------
+    Private Sub EnsureSubclass()
+        If m_hWndSubclassed <> 0 Then Exit Sub
+        If UserControl.hWnd = 0 Then Exit Sub
+        If UCL_SubclassSelect(UserControl.hWnd, ObjPtr(Me), ObjPtr(Me)) Then
+            m_hWndSubclassed = UserControl.hWnd
+        End If
+    End Sub
+
+    Friend Function zzSubclassProc(ByVal lhWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr) As LongPtr
+        Dim w(1) As Integer
+
+        On Error Resume Next
+
+        zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)   'MSG_AFTER
+
+        Select Case uMsg
+            Case WM_MOUSEWHEEL
+                CopyMemory w(0), wParam, 4      'w(1) = delta de la rueda (HIWORD con signo)
+                If w(1) < 0 Then
+                    ucList1.SetKeyDown vbKeyDown
+                Else
+                    ucList1.SetKeyDown vbKeyUp
+                End If
+
+            Case WM_NCDESTROY
+                UCL_UnsubclassSelect lhWnd, ObjPtr(Me)
+                m_hWndSubclassed = 0
+        End Select
+    End Function
+
+End Class

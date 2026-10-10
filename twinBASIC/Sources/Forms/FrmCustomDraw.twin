@@ -1,0 +1,140 @@
+[Description("")]
+[FormDesignerId("D36F6128-3978-584D-9FA7-F799CD258384")]
+[PredeclaredId]
+Class FrmCustomDraw
+
+    Option Explicit
+
+    Private Declare PtrSafe Function FillRect Lib "user32" (ByVal hDC As LongPtr, ByRef lpRect As RECT, ByVal hBrush As LongPtr) As Long
+    Private Declare PtrSafe Function CreateSolidBrush Lib "gdi32" (ByVal crColor As Long) As LongPtr
+    Private Declare PtrSafe Function DeleteObject Lib "gdi32" (ByVal hObject As LongPtr) As Long
+    Private Declare PtrSafe Function DrawThemeBackground Lib "uxtheme" (ByVal hTheme As LongPtr, ByVal lHdc As LongPtr, ByVal iPartId As Long, ByVal iStateId As Long, ByRef pRect As RECT, ByVal pClipRect As LongPtr) As Long
+    Private Declare PtrSafe Function OpenThemeData Lib "uxtheme" (ByVal hWnd As LongPtr, ByVal pszClassList As LongPtr) As LongPtr
+    Private Declare PtrSafe Function CloseThemeData Lib "uxtheme" (ByVal hTheme As LongPtr) As Long
+
+    Private Type RECT
+        Left As Long
+        Top As Long
+        Right As Long
+        Bottom As Long
+    End Type
+
+    Private DpiFactor As Single
+
+    ' Propiedades de diseno de los ucList (en VB6 estaban en el .frm).
+    Private Sub ApplyDesignProperties()
+        With ucList1
+            .ListStyle = StyleListBox
+            .FindTextColor = vbHighlight
+            .LineColor = 13487565
+            .OLEDropMode = OLEDropModeManual
+        End With
+    End Sub
+
+    Private Sub Example1()
+        Dim MyLine As String
+        Dim i As Long, FF As Integer
+
+        With ucList1
+            .ImageListInitialize 40, 40
+            .ImagesRadius = 37
+            .SubTitleVisible = True
+            .ItemHeight = 48
+            .ListDesign = GoogleDesign
+            .DrawSeparatorLine = True
+
+            For i = 1 To 9
+                .ImageListAddImage App.Path & "\Caras\" & i & ".jpg"
+            Next
+
+            i = 0
+            FF = FreeFile
+            Open App.Path & "\Personal.txt" For Input As #FF
+                Do While Not EOF(FF)
+                    Line Input #FF, MyLine
+                    .AddItem Split(MyLine, ", ")(0), i, 2, Split(MyLine, ", ")(1)
+                    i = i + 1
+                Loop
+            Close FF
+            .Update
+
+        End With
+
+    End Sub
+
+    Private Sub Form_Load()
+        ApplyDesignProperties
+
+        DpiFactor = ucList1.GetWindowDpi
+
+        Example1
+    End Sub
+
+    Private Sub ucList1_ItemClick()
+        Dim i As Long
+        Dim lStart As Long
+        If ucList1.ItemData(ucList1.ListIndex) = 1 Then
+
+            lStart = ucList1.ListIndex
+            For i = lStart + 1 To ucList1.ListCount - 1
+                If ucList1.ItemData(lStart + 1) = 0 Then
+                    ucList1.RemoveItem lStart + 1
+                Else
+                    Exit For
+                End If
+            Next
+
+            ucList1.ItemData(ucList1.ListIndex) = 2
+
+        ElseIf ucList1.ItemData(ucList1.ListIndex) = 2 Then
+            ucList1.ItemData(ucList1.ListIndex) = 1
+
+            For i = 1 To 4 * Rnd + 1
+                ucList1.AddItem Space$(2) & "HOLA MUNDO", , 0, , , , ucList1.ListIndex + i
+            Next
+        End If
+        ucList1.Update
+    End Sub
+
+    Private Sub ucList1_ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long)
+        Dim tR As RECT
+        Dim hBrush As LongPtr
+
+        If ucList1.ItemData(Index) > 0 Then
+            DrawTheme hdc, Width - 24 * DpiFactor, Top + Height / 2 - 16 * DpiFactor / 2, IIf(ucList1.ItemData(Index) = 1, True, False)
+        Else
+            If Index < 4 Then
+                hBrush = CreateSolidBrush(vbRed)
+            Else
+                hBrush = CreateSolidBrush(vbGreen)
+            End If
+            With tR
+                .Top = Top + 2 * DpiFactor
+                .Right = 4 * DpiFactor
+                .Bottom = Top + Height - 1 * DpiFactor
+            End With
+            FillRect hdc, tR, hBrush
+            DeleteObject hBrush
+
+        End If
+    End Sub
+
+    Private Sub DrawTheme(ByVal lHdc As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal Colapsed As Boolean)
+        Dim hTheme As LongPtr
+        Dim tR As RECT
+
+        hTheme = OpenThemeData(Me.hWnd, StrPtr("ItemsView::ListView"))
+        If hTheme = 0 Then Exit Sub
+
+        With tR
+            .Left = X
+            .Top = Y
+            .Right = X + 16 * DpiFactor
+            .Bottom = Y + 16 * DpiFactor
+        End With
+
+        Call DrawThemeBackground(hTheme, lHdc, IIf(Colapsed, 9, 8), 0&, tR, 0)
+        CloseThemeData hTheme
+    End Sub
+
+End Class

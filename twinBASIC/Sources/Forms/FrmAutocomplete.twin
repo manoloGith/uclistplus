@@ -1,0 +1,156 @@
+[Description("")]
+[FormDesignerId("F2D874FE-7782-53F7-8E71-BE3DBBC08EAB")]
+[PredeclaredId]
+Class FrmAutocomplete
+
+    Option Explicit
+
+    Private cShadowBack As ClsShadow
+    Private cShadowButton As ClsShadow
+    Private CollShadow As Collection
+
+    ' Propiedades de diseno de los ucList (en VB6 estaban en el .frm).
+    ' Ambos son StyleDropDown (el valor por defecto); solo cambia FindTextColor.
+    Private Sub ApplyDesignProperties()
+        ucList1.FindTextColor = vbHighlight
+        ucList2.FindTextColor = vbHighlight
+    End Sub
+
+    Private Sub Form_Load()
+        Dim cShadow As ClsShadow
+        Dim i As Long
+
+        ApplyDesignProperties
+
+        With ucList1
+            .ImageListInitialize 16, 16
+            .UseMonocromeIcons = True
+            .ItemHeight = 32
+            .MaxVisibleItems = 8
+            .ImageListAddImage App.Path & "\Vectores PNG\8.png"
+            .Shadow.ShadowOffsetY = 2
+        End With
+
+        With ucList2
+            .ItemHeight = 32
+            .MaxVisibleItems = 8
+            .ListWidth = ucSelect1.Width / .GetWindowDpi
+            .Shadow.ShadowOffsetY = 2
+        End With
+
+        Set cShadowBack = New ClsShadow
+        With cShadowBack
+            .Margin = 4
+            .BorderColor = vbWhite
+            .BorderRadius = 5
+            .ShadowSize = 15
+            .ShowBorders Picture1.hWnd, True
+        End With
+
+        Set CollShadow = New Collection
+        For i = 0 To 3
+            Set cShadow = New ClsShadow
+            With cShadow
+                .ShadowSize = 0
+                .Margin = 3
+                .ShadowColor = &HFF9033
+                .ShadowOpacity = 0
+                .ShadowSize = 5
+                .ShowBorders PicBackTxt(i).hWnd, True
+            End With
+            CollShadow.Add cShadow
+        Next
+
+        Set cShadowButton = New ClsShadow
+        With cShadowButton
+            .Margin = 4
+            .BackColor = vbRed
+            .BorderRadius = 3
+            .BorderColor = vbRed
+            .BorderWidth = 0
+            .ShadowSize = 10
+            .ShowBorders PicButton.hWnd, True
+        End With
+
+        LoadCountrys
+        LoadNames
+
+    End Sub
+
+    Private Sub Form_Resize()
+        Picture1.Left = Me.ScaleWidth / 2 - Picture1.ScaleWidth / 2
+        If Not cShadowBack Is Nothing Then cShadowBack.Refresh
+    End Sub
+
+    Private Sub PicButton_GotFocus()
+        cShadowButton.BackColor = &HFF9033
+        cShadowButton.Refresh
+    End Sub
+
+    Private Sub PicButton_LostFocus()
+        cShadowButton.BackColor = vbRed
+        cShadowButton.Refresh
+    End Sub
+
+    Private Sub Text1_GotFocus(Index As Integer)
+        With CollShadow(Index + 1)
+            .ShadowOpacity = 30
+            .BorderColor = &HFF9033
+            .Refresh
+        End With
+        ucList1.AutoCompleteTextBox Text1(Index).hWnd, -Text1(Index).Left - 4, Text1(Index).Top * 2, Text1(Index).Left * 2 + 4, -Text1(Index).Top - 4
+    End Sub
+
+    Private Sub Text1_LostFocus(Index As Integer)
+        With CollShadow(Index + 1)
+            .ShadowOpacity = 0
+            .BorderColor = vbActiveBorder
+            .Refresh
+        End With
+    End Sub
+
+    Private Sub Form_Unload(Cancel As Integer)
+        ucList1.AutoCompleteTextBox 0
+        Set cShadowBack = Nothing
+        Set cShadowButton = Nothing
+        Set CollShadow = Nothing
+    End Sub
+
+    Private Sub LoadNames()
+        Dim MyLine As String
+        Dim FF As Integer
+
+        With ucList1
+            .Clear
+            FF = FreeFile
+            Open App.Path & "\Nombres.txt" For Input As #FF
+                Do While Not EOF(FF)
+                    Line Input #FF, MyLine
+                    If InStr(MyLine, ": ") = 0 Then
+                        .OpenGroup MyLine
+                    Else
+                        .AddItem Split(MyLine, ": ")(0), 0, , Split(MyLine, ": ")(1)
+                    End If
+                Loop
+                .Update
+            Close FF
+        End With
+    End Sub
+
+    Private Sub LoadCountrys()
+        Dim MyLine As String
+        Dim FF As Integer
+
+        With ucSelect1.List
+            .Clear
+            FF = FreeFile
+            Open App.Path & "\Country.txt" For Input As #FF
+                Do While Not EOF(FF)
+                    Line Input #FF, MyLine
+                    .AddItem MyLine
+                Loop
+            Close FF
+        End With
+    End Sub
+
+End Class
