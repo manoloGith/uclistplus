@@ -20,6 +20,8 @@ Class ucList
     ' - ucScrollbar reemplazado por una barra de desplazamiento interna dibujada
     '   por el propio control (estilos Google y Microsoft/Themed).
     ' - Timer1 reemplazado por SetTimer/WM_TIMER.
+    ' - TextBox Text1 (filtro) reemplazado por un control EDIT creado por codigo
+    '   con CreateWindowExW (sin controles en el disenador).
     ' - Se mantienen los mismos eventos, propiedades y metodos publicos.
     '--------------------------
 
@@ -103,6 +105,14 @@ Class ucList
     Private Declare PtrSafe Function DrawThemeBackground Lib "uxtheme" (ByVal hTheme As LongPtr, ByVal hDC As LongPtr, ByVal iPartId As Long, ByVal iStateId As Long, ByRef pRect As RECT, ByVal pClipRect As LongPtr) As Long
     Private Declare PtrSafe Function DrawFrameControl Lib "user32" (ByVal hDC As LongPtr, ByRef lpRect As RECT, ByVal un1 As Long, ByVal un2 As Long) As Long
     Private Declare PtrSafe Function DrawEdge Lib "user32" (ByVal hDC As LongPtr, ByRef qrc As RECT, ByVal edge As Long, ByVal grfFlags As Long) As Long
+    Private Declare PtrSafe Function CreateWindowExW Lib "user32" (ByVal dwExStyle As Long, ByVal lpClassName As LongPtr, ByVal lpWindowName As LongPtr, ByVal dwStyle As Long, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hWndParent As LongPtr, ByVal hMenu As LongPtr, ByVal hInstance As LongPtr, ByVal lpParam As LongPtr) As LongPtr
+    Private Declare PtrSafe Function DestroyWindow Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function MoveWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal bRepaint As Long) As Long
+    Private Declare PtrSafe Function SetWindowTextW Lib "user32" (ByVal hWnd As LongPtr, ByVal lpString As LongPtr) As Long
+    Private Declare PtrSafe Function GetWindowTextW Lib "user32" (ByVal hWnd As LongPtr, ByVal lpString As LongPtr, ByVal nMaxCount As Long) As Long
+    Private Declare PtrSafe Function GetWindowTextLengthW Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function GetKeyState Lib "user32" (ByVal nVirtKey As Long) As Integer
+    Private Declare PtrSafe Function SetBkColor Lib "gdi32" (ByVal hDC As LongPtr, ByVal crColor As Long) As Long
 
     Private Type TRACKMOUSEEVENTTYPE
         cbSize As Long
@@ -162,6 +172,26 @@ Class ucList
     Private Const GA_ROOT           As Long = 2
     Private Const TRANSPARENT_BK    As Long = 1
     Private Const GMEM_MOVEABLE     As Long = &H2
+
+    ' Control EDIT del filtro (reemplaza al TextBox Text1)
+    Private Const WS_CHILD          As Long = &H40000000
+    Private Const WS_CLIPSIBLINGS   As Long = &H4000000
+    Private Const ES_AUTOHSCROLL    As Long = &H80&
+    Private Const WM_SETFONT        As Long = &H30
+    Private Const WM_KEYDOWN        As Long = &H100
+    Private Const WM_COMMAND        As Long = &H111
+    Private Const WM_GETDLGCODE     As Long = &H87
+    Private Const WM_CTLCOLOREDIT   As Long = &H133
+    Private Const EN_CHANGE         As Long = &H300
+    Private Const DLGC_WANTARROWS   As Long = &H1
+    Private Const DLGC_WANTMESSAGE  As Long = &H4
+    Private Const DLGC_WANTCHARS    As Long = &H80
+    Private Const DLGC_HASSETSEL    As Long = &H8
+    Private Const SW_HIDE           As Long = 0
+    Private Const SW_SHOWNA         As Long = 8
+    Private Const VK_SHIFT          As Long = &H10
+    Private Const VK_CONTROL        As Long = &H11
+    Private Const VK_MENU           As Long = &H12
 
     ' Temporizadores internos (reemplazan a Timer1 y al autorepeat del scroll)
     Private Const TIMER_MAIN        As Long = 1
@@ -364,6 +394,20 @@ Class ucList
     ' Barra de desplazamiento interna
     Private SB              As tScrollBar
 
+    ' Control EDIT del filtro creado por codigo (reemplaza al TextBox Text1)
+    Private m_hEdit         As LongPtr
+    Private m_EditText      As String   'copia del texto actual (Text1.Text)
+    Private m_EditVisible   As Boolean
+    Private m_EditL         As Long
+    Private m_EditT         As Long
+    Private m_EditW         As Long
+    Private m_EditH         As Long
+    Private m_EditBack      As Long
+    Private m_EditFore      As Long
+    Private m_hEditBrush    As LongPtr
+    Private m_EditBrushColor As Long
+    Private m_EditSkipChar  As Boolean
+
     '======================================================================
     ' Metodos publicos
     '======================================================================
@@ -386,7 +430,7 @@ Class ucList
 
         If oTextBox = 0 Then Exit Function
 
-        Text1.Text = vbNullString
+        Edit_SetText vbNullString
 
         SetRect m_OffsetTextBox, OffsetLeft, OffsetTop, OffsetRight, OffsetBottom
         If UCL_SubclassList(SrcTextBox, ObjPtr(Me) + 1, ObjPtr(Me)) Then
@@ -420,7 +464,7 @@ Class ucList
         End If
 
         'Filtro
-        Text1.Text = TextBox_GetText(SrcTextBox)
+        Edit_SetText TextBox_GetText(SrcTextBox)
         If VisibleItemsCount = 0 Then
             HideList
         End If
@@ -525,8 +569,8 @@ Class ucList
         Dim i As Long, lTop As Long
 
         If m_ShowFilter Then
-            Text1.Height = UserControl.Font.Size * 1.5 * DpiFactor
-            lTop = Text1.Height + lMargin * 4
+            Edit_SetHeight UserControl.Font.Size * 1.5 * DpiFactor
+            lTop = m_EditH + lMargin * 4
         Else
             lTop = lMargin
         End If
@@ -760,8 +804,8 @@ Class ucList
                                         SetFore PrevForeColor
                                     End If
 
-                                    If Len(Text1.Text) > 0 And i <> m_Index Then
-                                        lPos = InStr(UCase$(sText), UCase$(Text1.Text))
+                                    If Len(m_EditText) > 0 And i <> m_Index Then
+                                        lPos = InStr(UCase$(sText), UCase$(m_EditText))
 
                                         If lPos Then
                                             TempStr = Left$(sText, lPos - 1)
@@ -769,7 +813,7 @@ Class ucList
                                             TempRect = rc
                                             DrawText lHdc, StrPtr(TempStr), -1, TempRect, DT_SINGLELINE Or DT_VCENTER Or DT_CALCRECT
 
-                                            TempStr = Mid$(sText, lPos, Len(Text1.Text))
+                                            TempStr = Mid$(sText, lPos, Len(m_EditText))
                                             rc.Left = rc.Left + TempRect.Right - TempRect.Left
                                             DrawText lHdc, StrPtr(TempStr), -1, rc, DT_SINGLELINE Or DT_VCENTER Or DT_WORD_ELLIPSIS
                                         End If
@@ -815,11 +859,11 @@ Class ucList
 
         If m_ShowFilter Then
             If isSegoeFontInstaled Then
-                RoundRectPlus lHdc, Text1.Left - lMargin, Text1.Top - lMargin, Text1.Width + lMargin * 2 + lCheckSize, Text1.Height + lMargin * 2, RGBtoARGB(UserControl.BackColor, 100), RGBtoARGB(m_SelectionColor, 100), BR / 2
-                SetRect rc, Text1.Left + Text1.Width, Text1.Top - lMargin, UserControl.ScaleWidth, Text1.Top + Text1.Height + lMargin
+                RoundRectPlus lHdc, m_EditL - lMargin, m_EditT - lMargin, m_EditW + lMargin * 2 + lCheckSize, m_EditH + lMargin * 2, RGBtoARGB(UserControl.BackColor, 100), RGBtoARGB(m_SelectionColor, 100), BR / 2
+                SetRect rc, m_EditL + m_EditW, m_EditT - lMargin, UserControl.ScaleWidth, m_EditT + m_EditH + lMargin
                 DrawGlass lHdc, rc, NormalTextColor
             Else
-                RoundRectPlus lHdc, Text1.Left - lMargin, Text1.Top - lMargin, Text1.Width + lMargin * 2 + lCheckSize, Text1.Height + lMargin * 2, RGBtoARGB(UserControl.BackColor, 100), RGBtoARGB(m_SelectionColor, 100), BR / 2
+                RoundRectPlus lHdc, m_EditL - lMargin, m_EditT - lMargin, m_EditW + lMargin * 2 + lCheckSize, m_EditH + lMargin * 2, RGBtoARGB(UserControl.BackColor, 100), RGBtoARGB(m_SelectionColor, 100), BR / 2
             End If
         End If
 
@@ -987,7 +1031,7 @@ Class ucList
         If SrcTextBox = 0 Then
             PutFocus UserControl.hWnd
         End If
-        Text1.Text = vbNullString
+        Edit_SetText vbNullString
 
         On Error Resume Next '---------Busca el formulario para capturar los eventos Unload y Resize
             Set oCtl = UserControl.Extender.Container
@@ -1003,19 +1047,19 @@ Class ucList
         On Error GoTo 0 '----------------
 
         If m_ShowFilter Then
-            Set Text1.Font = UserControl.Font
-            Text1.Visible = True
-            PutFocus Text1.hWnd
-            Text1.Height = UserControl.Font.Size * 1.5 * DpiFactor
-            lHeadHeight = Text1.Height + lMargin * 4
-            Text1.BackColor = UserControl.BackColor
-            If IsDarkColor(Text1.BackColor) Then
-                Text1.ForeColor = vbWhite
+            Edit_SetFont
+            Edit_SetVisible True
+            If m_hEdit <> 0 Then PutFocus m_hEdit
+            Edit_SetHeight UserControl.Font.Size * 1.5 * DpiFactor
+            lHeadHeight = m_EditH + lMargin * 4
+            m_EditBack = UserControl.BackColor
+            If IsDarkColor(m_EditBack) Then
+                m_EditFore = vbWhite
             Else
-                Text1.ForeColor = vbBlack
+                m_EditFore = vbBlack
             End If
         Else
-            Text1.Visible = False
+            Edit_SetVisible False
             lHeadHeight = lMargin
         End If
 
@@ -1074,7 +1118,7 @@ Class ucList
         PutFocus UserControl.hWnd
 
         If m_ShowFilter Then
-            Text1.Move lMargin * 2, lMargin * 2, UserControl.ScaleWidth - lMargin * 4 - 16 * DpiFactor
+            Edit_Move lMargin * 2, lMargin * 2, UserControl.ScaleWidth - lMargin * 4 - 16 * DpiFactor
         End If
 
         ListTop = lHeadHeight
@@ -1199,7 +1243,171 @@ Class ucList
     End Sub
 
     '======================================================================
-    ' Filtro (Text1)
+    ' Filtro: control EDIT creado por codigo (antes TextBox Text1)
+    '======================================================================
+    Private Sub Edit_Create()
+        Const ES_LEFT As Long = 0
+        If m_hEdit <> 0 Then Exit Sub
+        If m_hWndSubclassed = 0 Then Exit Sub
+
+        m_hEdit = CreateWindowExW(0, StrPtr("EDIT"), StrPtr(m_EditText), WS_CHILD Or WS_CLIPSIBLINGS Or ES_LEFT Or ES_AUTOHSCROLL, _
+                                  m_EditL, m_EditT, m_EditW, m_EditH, m_hWndSubclassed, 0, App.hInstance, 0)
+        If m_hEdit = 0 Then Exit Sub
+
+        UCL_SubclassList m_hEdit, ObjPtr(Me) + 2, ObjPtr(Me)
+        Edit_SetFont
+        If m_EditVisible Then ShowWindow m_hEdit, SW_SHOWNA
+    End Sub
+
+    Private Sub Edit_Destroy()
+        If m_hEdit <> 0 Then
+            UCL_UnsubclassList m_hEdit, ObjPtr(Me) + 2
+            DestroyWindow m_hEdit
+            m_hEdit = 0
+        End If
+        If m_hEditBrush <> 0 Then DeleteObject m_hEditBrush: m_hEditBrush = 0
+    End Sub
+
+    Private Sub Edit_SetFont()
+        Dim oFont As IFont
+        If m_hEdit = 0 Then Exit Sub
+        Set oFont = UserControl.Font
+        SendMessageW m_hEdit, WM_SETFONT, oFont.hFont, 1
+    End Sub
+
+    ' Equivale a Text1.Text = sText (dispara Text1_Change si cambia)
+    Private Sub Edit_SetText(ByVal sText As String)
+        If sText = m_EditText Then Exit Sub
+        If m_hEdit <> 0 Then
+            SetWindowTextW m_hEdit, StrPtr(sText)   'EN_CHANGE -> Text1_Change
+            m_EditText = Edit_ReadText()
+        Else
+            m_EditText = sText
+            Text1_Change
+        End If
+    End Sub
+
+    Private Function Edit_ReadText() As String
+        Dim lLen As Long, sBuf As String
+        If m_hEdit = 0 Then Edit_ReadText = m_EditText: Exit Function
+        lLen = GetWindowTextLengthW(m_hEdit)
+        If lLen > 0 Then
+            sBuf = String$(lLen + 1, vbNullChar)
+            lLen = GetWindowTextW(m_hEdit, StrPtr(sBuf), lLen + 1)
+            Edit_ReadText = Left$(sBuf, lLen)
+        End If
+    End Function
+
+    Private Sub Edit_SetVisible(ByVal bVisible As Boolean)
+        m_EditVisible = bVisible
+        If m_hEdit <> 0 Then ShowWindow m_hEdit, IIf(bVisible, SW_SHOWNA, SW_HIDE)
+    End Sub
+
+    Private Sub Edit_SetHeight(ByVal lHeight As Long)
+        m_EditH = lHeight
+        Edit_ApplyPos
+    End Sub
+
+    Private Sub Edit_Move(ByVal lLeft As Long, ByVal lTop As Long, Optional ByVal lWidth As Long = -1, Optional ByVal lHeight As Long = -1)
+        m_EditL = lLeft
+        m_EditT = lTop
+        If lWidth >= 0 Then m_EditW = lWidth
+        If lHeight >= 0 Then m_EditH = lHeight
+        Edit_ApplyPos
+    End Sub
+
+    Private Sub Edit_ApplyPos()
+        If m_hEdit <> 0 Then MoveWindow m_hEdit, m_EditL, m_EditT, m_EditW, m_EditH, 1
+    End Sub
+
+    Private Function Edit_ShiftState() As Integer
+        If GetKeyState(VK_SHIFT) < 0 Then Edit_ShiftState = Edit_ShiftState Or vbShiftMask
+        If GetKeyState(VK_CONTROL) < 0 Then Edit_ShiftState = Edit_ShiftState Or vbCtrlMask
+        If GetKeyState(VK_MENU) < 0 Then Edit_ShiftState = Edit_ShiftState Or vbAltMask
+    End Function
+
+    ' Mensajes de la propia ventana EDIT (antes eventos Text1_KeyDown / Text1_KeyPress)
+    Private Function Edit_WndProc(ByVal lhWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByRef bHandled As Boolean) As LongPtr
+        Dim KeyCode As Integer, KeyAscii As Integer, Shift As Integer
+        Dim lMsg As Long, vk As LongPtr
+
+        Select Case uMsg
+            Case WM_GETDLGCODE
+                ' Flechas y caracteres siempre; Enter (y Escape en modo desplegable)
+                ' tambien, para que no los consuma el formulario. Tab sigue moviendo el foco.
+                Edit_WndProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam) Or DLGC_WANTARROWS Or DLGC_WANTCHARS Or DLGC_HASSETSEL
+                If lParam <> 0 Then
+                    CopyMemory lMsg, ByVal lParam + LenB(vk), 4                 'MSG.message
+                    CopyMemory vk, ByVal lParam + LenB(vk) * 2, LenB(vk)        'MSG.wParam
+                    If lMsg = WM_KEYDOWN Or lMsg = WM_CHAR Then
+                        If vk = vbKeyReturn Or (vk = vbKeyEscape And Not isWinChild) Then
+                            Edit_WndProc = Edit_WndProc Or DLGC_WANTMESSAGE
+                        End If
+                    End If
+                End If
+                bHandled = True
+
+            Case WM_KEYDOWN
+                m_EditSkipChar = False
+                KeyCode = CInt(wParam And &HFF&)
+                Shift = Edit_ShiftState()
+                Text1_KeyDown KeyCode, Shift
+                If KeyCode = 0 Then
+                    m_EditSkipChar = True   'no pasar el WM_CHAR correspondiente (evita el pitido)
+                    bHandled = True
+                End If
+
+            Case WM_CHAR
+                If m_EditSkipChar Then
+                    m_EditSkipChar = False
+                    bHandled = True
+                Else
+                    KeyAscii = WordToInteger(wParam)
+                    Text1_KeyPress KeyAscii
+                    If KeyAscii = 0 Then
+                        bHandled = True
+                    ElseIf KeyAscii <> WordToInteger(wParam) Then
+                        Edit_WndProc = UCL_DefProc(lhWnd, uMsg, CLngPtr(KeyAscii) And &HFFFF&, lParam)
+                        bHandled = True
+                    End If
+                End If
+
+            Case WM_NCDESTROY
+                UCL_UnsubclassList lhWnd, ObjPtr(Me) + 2
+                m_hEdit = 0
+        End Select
+    End Function
+
+    ' Mensajes que el EDIT envia a su padre (la ventana del UserControl)
+    Private Function Edit_ParentMsg(ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByRef bHandled As Boolean) As LongPtr
+        Dim lBack As Long
+
+        If m_hEdit = 0 Or lParam <> m_hEdit Then Exit Function
+
+        Select Case uMsg
+            Case WM_COMMAND
+                If (HiWordSigned(wParam) And &HFFFF&) = EN_CHANGE Then
+                    m_EditText = Edit_ReadText()
+                    Text1_Change
+                    bHandled = True
+                End If
+
+            Case WM_CTLCOLOREDIT
+                lBack = TranslateColor(m_EditBack)
+                If m_hEditBrush = 0 Or m_EditBrushColor <> lBack Then
+                    If m_hEditBrush <> 0 Then DeleteObject m_hEditBrush
+                    m_hEditBrush = CreateSolidBrush(lBack)
+                    m_EditBrushColor = lBack
+                End If
+                SetTextColor wParam, TranslateColor(m_EditFore)
+                SetBkColor wParam, lBack
+                Edit_ParentMsg = m_hEditBrush
+                bHandled = True
+        End Select
+    End Function
+
+    '======================================================================
+    ' Filtro (logica)
     '======================================================================
     Private Sub Text1_Change()
         Dim i As Long
@@ -1207,7 +1415,7 @@ Class ucList
         Dim ParentIndex As Long
         Dim lWidth As Long
 
-        bFiltered = Len(Text1.Text) > 0
+        bFiltered = Len(m_EditText) > 0
         m_Index = -1
 
         VisibleItemsCount = 0
@@ -1217,7 +1425,7 @@ Class ucList
                     .Visible = False
                     ParentIndex = i
                 Else
-                    If InStr(UCase$(.Text), UCase$(Text1.Text)) Then
+                    If InStr(UCase$(.Text), UCase$(m_EditText)) Then
 
                         lHeight = lHeight + IH
 
@@ -1543,7 +1751,7 @@ Class ucList
                 GetCursorPos PT
                 hwin = WindowFromPointXY(PT)
 
-                If hwin <> UserControl.hWnd And hwin <> Text1.hWnd Then
+                If hwin <> UserControl.hWnd And hwin <> m_hEdit Then
 
                     If Not ParentMenu Is Nothing Then
                         If hwin = ParentMenu.hWnd Then Exit Sub
@@ -2205,7 +2413,7 @@ Class ucList
 
         Call LoadFontsIcons
 
-        Text1.Text = vbNullString
+        Edit_SetText vbNullString
 
         For i = 1 To 7
             If i Mod 3 = 0 Then
@@ -2296,7 +2504,7 @@ Class ucList
 
         If isWinChild Then
             m_HotItem = -1
-            Text1.Text = vbNullString
+            Edit_SetText vbNullString
             If Ambient.UserMode = False Then
                 For i = 1 To 7
                     If i Mod 3 = 0 Then
@@ -2321,18 +2529,18 @@ Class ucList
         Dim i As Long, WinHeight As Long
 
         If m_ShowFilter Then
-            Set Text1.Font = UserControl.Font
-            Text1.Visible = True
-            Text1.Height = UserControl.Font.Size * 1.5 * DpiFactor
-            lHeadHeight = Text1.Height + lMargin * 4
-            Text1.BackColor = UserControl.BackColor
-            If IsDarkColor(Text1.BackColor) Then
-                Text1.ForeColor = vbWhite
+            Edit_SetFont
+            Edit_SetVisible True
+            Edit_SetHeight UserControl.Font.Size * 1.5 * DpiFactor
+            lHeadHeight = m_EditH + lMargin * 4
+            m_EditBack = UserControl.BackColor
+            If IsDarkColor(m_EditBack) Then
+                m_EditFore = vbWhite
             Else
-                Text1.ForeColor = vbBlack
+                m_EditFore = vbBlack
             End If
         Else
-            Text1.Visible = False
+            Edit_SetVisible False
             lHeadHeight = lMargin
         End If
 
@@ -2435,7 +2643,7 @@ Class ucList
             End If
 
             If m_ShowFilter Then
-                Text1.Move lMargin * 2, lMargin * 2, UserControl.ScaleWidth - lMargin * 4 - 16 * DpiFactor
+                Edit_Move lMargin * 2, lMargin * 2, UserControl.ScaleWidth - lMargin * 4 - 16 * DpiFactor
             End If
 
             hRgn = CreateRoundRectRgn(0, 0, UserControl.ScaleWidth, UserControl.ScaleHeight, BR, BR)
@@ -3442,10 +3650,12 @@ Class ucList
             m_hWndSubclassed = h
             m_TimerActive = 0
             Timer1_Apply
+            Edit_Create
         End If
     End Sub
 
     Private Sub RemoveSubclasses()
+        Edit_Destroy
         If m_hWndSubclassed <> 0 Then
             KillTimer m_hWndSubclassed, TIMER_MAIN
             KillTimer m_hWndSubclassed, TIMER_SCROLL
@@ -3460,6 +3670,13 @@ Class ucList
         End If
     End Sub
 
+    ' LOWORD de un WPARAM como Integer (con signo, sin desbordamiento)
+    Private Function WordToInteger(ByVal Value As LongPtr) As Integer
+        Dim w(1) As Integer
+        CopyMemory w(0), Value, 4
+        WordToInteger = w(0)
+    End Function
+
     ' Signed HIWORD de un WPARAM (para WM_MOUSEWHEEL)
     Private Function HiWordSigned(ByVal Value As LongPtr) As Long
         Dim w(1) As Integer
@@ -3470,11 +3687,27 @@ Class ucList
     ' Llamado desde mUcListHelpers.UCL_ListProc
     Friend Function zzSubclassProc(ByVal lhWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr) As LongPtr
         Dim KeyCode As Integer
+        Dim bHandled As Boolean
+        Dim lRet As LongPtr
 
         On Error Resume Next
 
-        If lhWnd = m_hWndSubclassed And m_hWndSubclassed <> 0 Then
+        If lhWnd = m_hEdit And m_hEdit <> 0 Then
+            lRet = Edit_WndProc(lhWnd, uMsg, wParam, lParam, bHandled)
+            If bHandled Then
+                zzSubclassProc = lRet
+                Exit Function
+            End If
+
+        ElseIf lhWnd = m_hWndSubclassed And m_hWndSubclassed <> 0 Then
             Select Case uMsg
+                Case WM_COMMAND, WM_CTLCOLOREDIT
+                    lRet = Edit_ParentMsg(uMsg, wParam, lParam, bHandled)
+                    If bHandled Then
+                        zzSubclassProc = lRet
+                        Exit Function
+                    End If
+
                 Case WM_TIMER
                     Select Case CLng(wParam)
                         Case TIMER_MAIN
@@ -3514,6 +3747,7 @@ Class ucList
 
                 Case WM_NCDESTROY
                     zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)
+                    m_hEdit = 0   'el EDIT hijo ya fue destruido junto con el control
                     KillTimer lhWnd, TIMER_MAIN
                     KillTimer lhWnd, TIMER_SCROLL
                     m_TimerActive = 0

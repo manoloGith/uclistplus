@@ -9,7 +9,7 @@ métodos públicos** que el `ucList.ctl` original y compila tanto en **32 como e
 | Archivo | Descripción |
 |---|---|
 | `Sources/ucList.twin` | Código del UserControl `ucList` |
-| `Sources/ucList.tbcontrol` | Diseñador del UserControl (incluye el `TextBox` `Text1` del filtro) |
+| `Sources/ucList.tbcontrol` | Diseñador del UserControl (vacío: no contiene controles hijos) |
 | `Sources/ClsShadow.twin` | Clase de sombra/borde (`ucList.Shadow`), convertida a 64 bits |
 | `Sources/mUcListHelpers.twin` | Módulo de subclasificación (`SetWindowSubclass`) |
 
@@ -61,6 +61,16 @@ End Sub
   - Soporta arrastre del *thumb*, clic en la pista, botones con autorrepetición
     y rueda del ratón.
 - **Timer1** se reemplazó por `SetTimer`/`WM_TIMER` sobre la ventana del control.
+- **Text1** (el `TextBox` del filtro) se reemplazó por un control `EDIT` de Win32
+  creado por código con `CreateWindowExW`:
+  - `EN_CHANGE` (vía `WM_COMMAND` al padre) dispara la lógica de `Text1_Change`.
+  - `WM_KEYDOWN`/`WM_CHAR` del EDIT se subclasifican y llaman a la lógica de
+    `Text1_KeyDown`/`Text1_KeyPress`. Si la tecla se consume, se descarta el `WM_CHAR`
+    para evitar el pitido.
+  - `WM_GETDLGCODE` pide flechas, Enter y Escape (en modo desplegable) para que no
+    los consuma el formulario. Tab sigue moviendo el foco.
+  - Los colores se aplican con `WM_CTLCOLOREDIT` y la fuente con `WM_SETFONT`.
+  - El EDIT solo existe en tiempo de ejecución. En diseño se dibuja solo el marco.
 - `VarPtrArray` (msvbvm60.dll, que no existe en 64 bits) se eliminó; las imágenes
   desde arrays de bytes se cargan con `GlobalAlloc` + `CreateStreamOnHGlobal`.
 - La imagen de diseño (`ucList.ctx`) se sustituyó por un icono dibujado por código
