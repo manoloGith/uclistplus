@@ -685,11 +685,8 @@ Class ucList
                 InvalidateRect m_hList, 0, 0
             End If
         Else
-            If m_ListStyle <> StyleListBox Then
-                If UserControl.ScaleWidth <> 32 Or UserControl.ScaleHeight <> 32 Then
-                    UserControl.Size 32 * Screen.TwipsPerPixelX, 32 * Screen.TwipsPerPixelY
-                End If
-            End If
+            ' En diseno no se fuerza el tamano: los formularios sin propiedades
+            ' guardadas (estilo por codigo) conservan su geometria.
             DesignRender
         End If
     End Sub

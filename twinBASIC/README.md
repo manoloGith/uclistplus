@@ -9,12 +9,35 @@ La interfaz pública es la del original: los mismos eventos, propiedades, métod
 |---|---|---|
 | `ucList.twin` + `ucList.tbcontrol` | UserControl (`Class ucList … End Class`) | El control. El `.tbcontrol` es el JSON del diseñador; el control no tiene controles hijos de diseño. |
 | `ClsShadow.twin` | Clase (`Class ClsShadow … End Class`) | Sombra y borde redondeado. |
+| `Forms/FrmTest.twin` + `FrmTest.tbform` | Formulario | Banco de pruebas (ver más abajo). |
 | `mUcListHelpers.twin` | Módulo (`Module mUcListHelpers … End Module`) | Subclasificación (SetWindowSubclass), clase de ventana propia, GDI+, ganchos de teclado y ratón. |
 
 Todos los archivos usan saltos de línea CRLF (`\r\n`), igual que los que genera twinBASIC.
 
 Uso: añade los cuatro archivos al proyecto (o arrastra la carpeta `Sources`) y coloca ucList en el formulario.
 Las propiedades de diseño (ListStyle, ItemHeight, colores, etc.) se configuran en la ventana de propiedades, como en VB6.
+
+## Formulario de prueba (`Sources/Forms/FrmTest.twin` + `FrmTest.tbform`)
+
+Banco de pruebas que ejercita **todas** las propiedades, métodos y eventos de ucList (y la clase ClsShadow a través de `.Shadow`):
+
+| Control | Para qué |
+|---|---|
+| `ucList1` | ListBox con 30 elementos, iconos, grupos, separador, atajo, colores y un elemento deshabilitado. Es el control que se prueba. Clic derecho: menú. |
+| `ucProps` | ListBox `MultiSelect`: cada casilla activa o desactiva una propiedad de `ucList1` o de `ucDrop`. |
+| `ucActions` | ListBox con filtro (`ShowFilter`, EDIT): cada elemento llama a un método. Clic o Intro para ejecutarlo; `txtParam` sirve de parámetro. Las consultas escriben en el registro. |
+| `cmdDrop` + `ucDrop` | DropDown con filtro, abierto como botón conmutador. |
+| `cmdMenu` + `ucMenu`/`ucSub`/`ucSub2` | Menú con atajos, aceleradores `&`, elemento deshabilitado y dos niveles de submenú. |
+| `txtAuto1`/`txtAuto2` + `ucAuto` | Autocompletar: un mismo ucList para dos TextBox. Sirve para probar el caso de Intro y luego Tab. |
+| `txtLog` | Registro de todos los eventos. |
+
+Cómo montarlo:
+1. Crea un proyecto *Standard EXE* llamado **`ucListPlus`**. En el `.tbform` el control se identifica como `ucListPlus.ucList`; si tu proyecto tiene otro nombre, cambia ese prefijo con buscar y reemplazar.
+2. Importa los archivos de `Sources` y de `Sources/Forms`.
+3. En *Project → Settings*, elige **`FrmTest`** como objeto de inicio.
+
+twinBASIC guarda las propiedades de los UserControl en el `.tbform` como un bloque binario que no se puede generar a mano. Por eso el `.tbform` solo guarda la posición y el tamaño de cada ucList, y `Form_Load` asigna `ListStyle` y el resto de propiedades por código.
+En diseño, el ucList ya no fuerza el tamaño de 32×32, para que el formulario mantenga su geometría. Los iconos son PNG incrustados en base64, así que no hacen falta archivos externos.
 
 ## Arquitectura
 

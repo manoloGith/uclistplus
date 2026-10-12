@@ -1,0 +1,885 @@
+[Description("Formulario de prueba de ucList: propiedades, eventos y metodos")]
+[FormDesignerId("307C806A-0885-52F4-AFFC-AA1C4F2F3EFF")]
+[PredeclaredId]
+Class FrmTest
+
+    '==========================================================================
+    ' FrmTest - banco de pruebas de ucList / ClsShadow
+    '
+    '  ucList1    ListBox principal (el control que se prueba)
+    '  ucProps    ListBox MultiSelect: cada elemento activa/desactiva una
+    '             propiedad de ucList1 (o de las listas desplegables)
+    '  ucActions  ListBox con filtro (EDIT): cada elemento llama a un metodo.
+    '             Clic o Intro para ejecutar. Muchas acciones usan txtParam.
+    '  ucDrop     DropDown con filtro (boton cmdDrop)
+    '  ucMenu     Menu con submenus ucSub / ucSub2 (boton cmdMenu o clic
+    '             derecho sobre el formulario)
+    '  ucAuto     Autocompletar para txtAuto1 y txtAuto2
+    '  txtLog     Registro de todos los eventos
+    '==========================================================================
+
+    Option Explicit
+
+    Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
+    Private Declare PtrSafe Function GetCursorPos Lib "user32" (ByRef lpPoint As POINTAPI) As Long
+    Private Declare PtrSafe Function LoadIconW Lib "user32" (ByVal hInstance As LongPtr, ByVal lpIconName As LongPtr) As LongPtr
+    Private Declare PtrSafe Function CreateSolidBrush Lib "gdi32" (ByVal crColor As Long) As LongPtr
+    Private Declare PtrSafe Function FillRect Lib "user32" (ByVal hDC As LongPtr, ByRef lpRect As RECT, ByVal hBrush As LongPtr) As Long
+    Private Declare PtrSafe Function DeleteObject Lib "gdi32" (ByVal hObject As LongPtr) As Long
+    Private Declare PtrSafe Function SetTextColor Lib "gdi32" (ByVal hDC As LongPtr, ByVal crColor As Long) As Long
+    Private Declare PtrSafe Function SetBkMode Lib "gdi32" (ByVal hDC As LongPtr, ByVal nBkMode As Long) As Long
+    Private Declare PtrSafe Function TextOutW Lib "gdi32" (ByVal hDC As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal lpString As LongPtr, ByVal nCount As Long) As Long
+
+    Private Type RECT
+        Left As Long
+        Top As Long
+        Right As Long
+        Bottom As Long
+    End Type
+
+    Private Type POINTAPI
+        X As Long
+        Y As Long
+    End Type
+
+    ' Iconos PNG 32x32 incrustados (prueba la carga "data:image/png;base64,")
+    Private Const ICON0 As String = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAyElEQVR42t2Xuw3EIAxAWSUrMAMzMAPL0N5E3oEZqK9F4lw40unki0hCbCfFa1DAj0/Adsvr7TRxdxMISEYAqUgjKrVl+ma6QEIK0gcp1Oe0gKeZ9YMAjXFIINLy9pM0GmuXQJwQ+Jc4KuAnzZxbCT8iABcE/z4TmwLpwuAraUugCAiUfwJBIPhK4ASyoEDmBEBQADiBKihQOYEmKNBMCqhvgfohVP8N1S8i9avYxGOk/hybSEjUUzITSamJtNxEYWKmNHtudfwBZ9wOYIwXtAgAAAAASUVORK5CYII="
+    Private Const ICON1 As String = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAOElEQVR42u3XoQEAIAwDwQxYwaaMCJ4BWsSJN1Fnk9orkwXgGU5TAAAAAAAAAAAAAAAA/wJ8w/YuCYzNxscUFr0AAAAASUVORK5CYII="
+    Private Const ICON2 As String = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAjElEQVR42s2XSw7AIAgFubnX6G1tmrho058feMyCrTOJCg+rm1lmrR5QWqUIHODaqqgFzvAlCS/4tIQnfErCGz4sEQEfkoiCd0tEwrskouG/Egr4p4QK/iqhhD9KqOE3iQz4RQIjkH4FiEeI+IaIRoRoxYhhhBjHiECCiGSIUIqI5YjFBLGaIZZTl9oBMTUcmcif0BIAAAAASUVORK5CYII="
+    Private Const ICON3 As String = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAx0lEQVR42t2Xuw3EIAxAmYkiCxwzMAPLsJV3YAb6lEjEhSOdTr6IJMT2XfEaFPDjE7Dd+lqcJu7XBAKSEUAq0ohKbZm+mS6QkIL0QQr1uS3gaWb9IkBjXBKItLz9Jo3GOiUQJwT+JI4K+Ekz51bCjwjAA8Hfz8ShQHow+E46EigCAuWbQBAIvhM4gSwokDkBEBQATqAKClROoAkKNJMC6lugfgjVf0P1i0j9KjbxGKk/xyYSEvWUzERSaiItN1GYmCnN/rc63gB65hpRdykwSQAAAABJRU5ErkJggg=="
+    Private Const ICON4 As String = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAOUlEQVR42u3XoQEAIAwDwWzTpRmCDcEzQIs48SbqbLJqZ7IAPMNpCgAAAAAAAAAAAAAA4F+Ab9jeBWUibdWNqzD+AAAAAElFTkSuQmCC"
+
+    Private Const IDI_INFORMATION As Long = 32516
+
+    ' Indices de ucProps
+    Private Enum ePropItem
+        piSubTitleVisible
+        piShowFilter
+        piMultiSelect
+        piMonocrome
+        piSeparatorLine
+        piBorderVisible
+        piEnabled
+        piMicrosoft
+        piDark
+        piSelectionRadius
+        piImagesRadius
+        piBorderRadius
+        piItemHeight
+        piBigFont
+        piBold
+        piHand
+        piOLEDrop
+        piPostPaint
+        piCustomDraw
+        piShadow
+        piDropMaxVisible
+        piDropWide
+        piDropMulti
+        piCount
+    End Enum
+
+    Private m_bPostPaint    As Boolean
+    Private m_bCustomDraw   As Boolean
+    Private m_nNew          As Long
+    Private m_nMouseMove    As Long
+    Private m_nScrollAdds   As Long
+    Private m_bLoading      As Boolean
+
+    '======================================================================
+    ' Carga
+    '======================================================================
+    Private Sub Form_Load()
+        m_bLoading = True
+        Me.Caption = "ucList - banco de pruebas"
+
+        ' El estilo se asigna por codigo (el .tbform no guarda las propiedades
+        ' de los UserControl). En tiempo de ejecucion ListStyle se puede cambiar.
+        ucList1.ListStyle = StyleListBox
+        ucProps.ListStyle = StyleListBox
+        ucActions.ListStyle = StyleListBox
+        ucDrop.ListStyle = StyleDropDown
+        ucMenu.ListStyle = StyleMenu
+        ucSub.ListStyle = StyleMenu
+        ucSub2.ListStyle = StyleMenu
+        ucAuto.ListStyle = StyleDropDown
+
+        SetupList1
+        SetupProps
+        SetupActions
+        SetupDrop
+        SetupMenus
+        SetupAuto
+
+        txtParam.Text = "Texto de prueba"
+        txtLog.Text = ""
+        m_bLoading = False
+        Log "Form_Load: listo. Instrucciones en la etiqueta inferior."
+        ShowStatus
+    End Sub
+
+    Private Sub LoadIcons(oList As ucList, ByVal lSize As Integer)
+        oList.ImageListInitialize lSize, lSize
+        oList.ImageListAddImage ICON0, "azul"
+        oList.ImageListAddImage ICON1, "verde"
+        oList.ImageListAddImage ICON2, "naranja"
+        oList.ImageListAddImage ICON3, "rojo"
+        oList.ImageListAddImage ICON4, "morado"
+    End Sub
+
+    Private Sub SetupList1()
+        Dim i As Long
+        With ucList1
+            .ItemHeight = 32
+            .ListDesign = GoogleDesign
+            .SelectionColor = vbHighlight
+            .FindTextColor = vbHighlight
+            .BorderColor = vbActiveBorder
+            .LineColor = vbActiveBorder
+            .SubTitleVisible = False
+            LoadIcons ucList1, 16
+            For i = 1 To 30
+                .AddItem "Elemento " & Format$(i, "00"), (i - 1) Mod 5, "dato " & i, "Subtexto del elemento " & i
+            Next
+            .AddItem "-"
+            .OpenGroup "Grupo A", 0, "grupoA"
+            .AddItem "Hijo A1", 1
+            .AddItem "Hijo A2", 2
+            .CloseGroup
+            .OpenGroup "Grupo B", 3
+            .AddItem "Hijo B1", 4, , , , , True
+            .CloseGroup
+            .AddItem "Con atajo" & vbTab & "Ctrl+X", 2
+            .ItemTextColor(2) = vbBlue
+            .ItemBackColor(4) = RGB(255, 240, 200)
+            .ItemDisabled(6) = True
+            .ListIndex = 0
+        End With
+    End Sub
+
+    Private Sub SetupProps()
+        With ucProps
+            .MultiSelect = True
+            .ItemHeight = 22
+            .AddItem "SubTitleVisible"
+            .AddItem "ShowFilter (EDIT)"
+            .AddItem "MultiSelect"
+            .AddItem "UseMonocromeIcons"
+            .AddItem "DrawSeparatorLine"
+            .AddItem "BorderVisible", , , , True
+            .AddItem "Enabled", , , , True
+            .AddItem "ListDesign = Microsoft"
+            .AddItem "BackColor oscuro"
+            .AddItem "SelectionRadius = 6"
+            .AddItem "ImagesRadius = 8"
+            .AddItem "BorderRadius = 0", , , , False
+            .AddItem "ItemHeight = 44"
+            .AddItem "Font grande (Set Font)"
+            .AddItem "ItemBold(0)"
+            .AddItem "MousePointer = vbCrosshair"
+            .AddItem "OLEDropMode = Manual"
+            .AddItem "PostPaint: dibujar marca"
+            .AddItem "ItemCustomDraw: barra"
+            .AddItem "Shadow: sombra grande"
+            .AddItem "ucDrop.MaxVisibleItems = 5"
+            .AddItem "ucDrop.ListWidth = 400"
+            .AddItem "ucDrop.MultiSelect"
+        End With
+    End Sub
+
+    Private Sub AddAction(ByVal sText As String, ByVal sKey As String, Optional ByVal sSub As String)
+        ucActions.AddItem sText, , sKey, sSub
+    End Sub
+
+    Private Sub SetupActions()
+        With ucActions
+            .ShowFilter = True
+            .ItemHeight = 24
+            .SelectionRadius = 4
+            .OpenGroup "Elementos"
+            AddAction "AddItem (txtParam)", "add"
+            AddAction "AddItem en Index = ListIndex", "addat"
+            AddAction "RemoveItem ListIndex", "remove"
+            AddAction "Clear", "clear"
+            AddAction "Rellenar de nuevo", "fill"
+            AddAction "OpenGroup + 3 hijos + CloseGroup", "group"
+            AddAction "AddSubMenu (en ucMenu)", "submenu"
+            AddAction "BSort ascendente", "bsortA"
+            AddAction "BSort descendente", "bsortD"
+            AddAction "QSort ascendente", "qsortA"
+            AddAction "QSort descendente", "qsortD"
+            .CloseGroup
+            .OpenGroup "Propiedades del elemento (ListIndex)"
+            AddAction "ItemText = txtParam", "text"
+            AddAction "ItemSubText = txtParam", "subtext"
+            AddAction "ItemTextColor = rojo", "color"
+            AddAction "ItemSubTextColor = verde", "subcolor"
+            AddAction "ItemBackColor = amarillo", "back"
+            AddAction "ItemBackColor = ninguno", "backnone"
+            AddAction "ItemDisabled alternar", "disable"
+            AddAction "ItemIcon siguiente", "icon"
+            AddAction "ItemData = Now", "data"
+            AddAction "ItemSelected alternar", "select"
+            AddAction "ItemBold alternar", "bold"
+            AddAction "ListIndex = txtParam", "listindex"
+            .CloseGroup
+            .OpenGroup "Consultas (ver registro)"
+            AddAction "Info del elemento", "info"
+            AddAction "Leer todas las propiedades", "props"
+            AddAction "Funciones varias", "misc"
+            .CloseGroup
+            .OpenGroup "ImageList"
+            AddAction "ImageListAddImage (PNG base64)", "imgadd"
+            AddAction "ImageListAddImage (HICON)", "imghicon"
+            AddAction "ImageListAddImage (StdPicture)", "imgpic"
+            AddAction "ImageListInsertImage (Before:=1)", "imginsert"
+            AddAction "ImageListRemoveImage (ultima)", "imgremove"
+            AddAction "ImageListClear", "imgclear"
+            AddAction "ImageListInitialize 24 + recargar", "imginit24"
+            AddAction "ImageListInitialize 16 + recargar", "imginit16"
+            .CloseGroup
+            .OpenGroup "Teclado y foco"
+            AddAction "SetKeyDown vbKeyDown", "kdown"
+            AddAction "SetKeyDown vbKeyUp", "kup"
+            AddAction "SetKeyDown vbKeyEnd", "kend"
+            AddAction "SetKeyPress (1a letra de txtParam)", "kpress"
+            AddAction "ucList1.SetFocus", "focus"
+            .CloseGroup
+            .OpenGroup "Varios"
+            AddAction "Refresh", "refresh"
+            AddAction "Update", "update"
+            AddAction "ShowList ucDrop en el cursor", "showlist"
+            AddAction "HideList ucDrop", "hidelist"
+            AddAction "OLEDrag (arrastrar texto)", "oledrag"
+            AddAction "Drag vbBeginDrag (soltar en el form)", "drag"
+            AddAction "DragMode alternar", "dragmode"
+            AddAction "ListStyle: ucList1 -> DropDown y volver", "liststyle"
+            AddAction "Limpiar registro", "clearlog"
+            .CloseGroup
+        End With
+    End Sub
+
+    Private Sub SetupDrop()
+        Dim v As Variant
+        Dim i As Long
+        v = Array("Alava", "Albacete", "Alicante", "Almeria", "Asturias", "Avila", "Badajoz", "Barcelona", "Burgos", _
+                  "Caceres", "Cadiz", "Cantabria", "Castellon", "Ciudad Real", "Cordoba", "Cuenca", "Girona", "Granada", _
+                  "Guadalajara", "Guipuzcoa", "Huelva", "Huesca", "Jaen", "La Coruna", "La Rioja", "Las Palmas", "Leon", _
+                  "Lleida", "Lugo", "Madrid", "Malaga", "Murcia", "Navarra", "Ourense", "Palencia", "Pontevedra", _
+                  "Salamanca", "Segovia", "Sevilla", "Soria", "Tarragona", "Tenerife", "Teruel", "Toledo", "Valencia", _
+                  "Valladolid", "Vizcaya", "Zamora", "Zaragoza")
+        With ucDrop
+            .ShowFilter = True
+            .ItemHeight = 28
+            .ListWidth = 220
+            .MaxListHeight = 300
+            .SelectionRadius = 6
+            LoadIcons ucDrop, 16
+            For i = 0 To UBound(v)
+                .AddItem v(i), i Mod 5
+            Next
+        End With
+    End Sub
+
+    Private Sub SetupMenus()
+        With ucSub2
+            .ItemHeight = 28
+            .ListWidth = 180
+            .AddItem "Opcion profunda 1"
+            .AddItem "Opcion profunda 2"
+        End With
+        With ucSub
+            .ItemHeight = 28
+            .ListWidth = 200
+            LoadIcons ucSub, 16
+            .AddItem "Sub opcion 1", 0
+            .AddItem "Sub opcion 2", 1
+            .AddItem "-"
+            .AddSubMenu "Aun mas", ucSub2, 2
+        End With
+        With ucMenu
+            .ItemHeight = 30
+            .ListWidth = 230
+            .UseMonocromeIcons = True
+            LoadIcons ucMenu, 16
+            .AddItem "&Nuevo" & vbTab & "Ctrl+N", 0
+            .AddItem "&Abrir" & vbTab & "Ctrl+O", 1
+            .AddItem "&Guardar" & vbTab & "Ctrl+S", 2
+            .AddItem "Deshabilitado", 3, , , , , True
+            .AddItem "-"
+            .AddSubMenu "Mas opciones", ucSub, 4
+            .AddItem "-"
+            .AddItem "&Salir del menu"
+        End With
+    End Sub
+
+    Private Sub SetupAuto()
+        Dim v As Variant
+        Dim i As Long
+        v = Array("Ana", "Andres", "Antonio", "Beatriz", "Carlos", "Carmen", "Cristina", "David", "Elena", "Fernando", _
+                  "Francisco", "Isabel", "Javier", "Jose", "Juan", "Laura", "Lucia", "Manuel", "Maria", "Marta", _
+                  "Miguel", "Pablo", "Pedro", "Raquel", "Rosa", "Sergio", "Sofia", "Teresa", "Victor")
+        With ucAuto
+            .ItemHeight = 26
+            .MaxVisibleItems = 8
+            For i = 0 To UBound(v)
+                .AddItem v(i)
+            Next
+        End With
+    End Sub
+
+    '======================================================================
+    ' Utilidades
+    '======================================================================
+    Private Sub Log(ByVal s As String)
+        If Len(txtLog.Text) > 30000 Then txtLog.Text = Right$(txtLog.Text, 15000)
+        txtLog.SelStart = Len(txtLog.Text)
+        txtLog.SelText = Format$(Time, "hh:nn:ss") & "  " & s & vbCrLf
+    End Sub
+
+    Private Sub ShowStatus()
+        lblStatus.Caption = "ucList1: ListIndex=" & ucList1.ListIndex & "  Text=""" & ucList1.Text & """  ListCount=" & ucList1.ListCount & _
+                            "  ImageListCount=" & ucList1.ImageListCount & "  MouseMove=" & m_nMouseMove & _
+                            "  ucDrop.Text=""" & ucDrop.Text & """"
+    End Sub
+
+    Private Function ParamLong(ByVal lDefault As Long) As Long
+        If IsNumeric(txtParam.Text) Then ParamLong = CLng(txtParam.Text) Else ParamLong = lDefault
+    End Function
+
+    Private Function CurIndex() As Long
+        CurIndex = ucList1.ListIndex
+        If CurIndex < 0 Or CurIndex >= ucList1.ListCount Then
+            Log "  (no hay elemento seleccionado en ucList1)"
+            CurIndex = -1
+        End If
+    End Function
+
+    Private Function ButtonName(ByVal Button As Integer) As String
+        Select Case Button
+            Case vbLeftButton: ButtonName = "izq"
+            Case vbRightButton: ButtonName = "der"
+            Case vbMiddleButton: ButtonName = "centro"
+            Case Else: ButtonName = CStr(Button)
+        End Select
+    End Function
+
+    '======================================================================
+    ' ucProps: alternar propiedades
+    '======================================================================
+    Private Sub ucProps_ItemClick()
+        Dim i As Long, b As Boolean
+        Dim f As StdFont
+        i = ucProps.ListIndex
+        If i < 0 Then Exit Sub
+        b = ucProps.ItemSelected(i)
+        Log "ucProps: " & ucProps.ItemText(i) & " = " & b
+        Select Case i
+            Case piSubTitleVisible: ucList1.SubTitleVisible = b
+            Case piShowFilter: ucList1.ShowFilter = b
+            Case piMultiSelect: ucList1.MultiSelect = b
+            Case piMonocrome: ucList1.UseMonocromeIcons = b
+            Case piSeparatorLine: ucList1.DrawSeparatorLine = b
+            Case piBorderVisible: ucList1.BorderVisible = b
+            Case piEnabled: ucList1.Enabled = b
+            Case piMicrosoft: ucList1.ListDesign = IIf(b, MicrosoftDesign, GoogleDesign)
+            Case piDark
+                If b Then
+                    ucList1.BackColor = RGB(32, 32, 36)
+                    ucList1.SelectionColor = RGB(0, 120, 215)
+                    ucList1.FindTextColor = RGB(255, 200, 0)
+                Else
+                    ucList1.BackColor = vbWindowBackground
+                    ucList1.SelectionColor = vbHighlight
+                    ucList1.FindTextColor = vbHighlight
+                End If
+            Case piSelectionRadius: ucList1.SelectionRadius = IIf(b, 6, 0)
+            Case piImagesRadius
+                ucList1.ImagesRadius = IIf(b, 8, 0)
+                LoadIcons ucList1, ucList1.ImgListWidth / ucList1.GetWindowDpi
+                ucList1.Refresh
+            Case piBorderRadius: ucList1.BorderRadius = IIf(b, 0, 10)
+            Case piItemHeight: ucList1.ItemHeight = IIf(b, 44, 32)
+            Case piBigFont
+                Set f = New StdFont
+                f.Name = "Segoe UI"
+                f.Size = IIf(b, 12, 9)
+                Set ucList1.Font = f
+            Case piBold
+                If ucList1.ListCount > 0 Then ucList1.ItemBold(0) = b
+            Case piHand
+                ucList1.MousePointer = IIf(b, vbCrosshair, vbDefault)
+                ' MouseIcon (se usa con MousePointer = vbCustom)
+                If b Then Set ucList1.MouseIcon = Nothing
+            Case piOLEDrop: ucList1.OLEDropMode = IIf(b, OLEDropModeManual, OLEDropModeNone)
+            Case piPostPaint: m_bPostPaint = b: ucList1.Refresh
+            Case piCustomDraw: m_bCustomDraw = b: ucList1.Refresh
+            Case piShadow
+                With ucList1.Shadow
+                    If b Then
+                        .ShadowSize = 6
+                        .ShadowOffsetY = 3
+                        .ShadowOpacity = 30
+                    Else
+                        .ShadowSize = 3
+                        .ShadowOffsetY = 0
+                        .ShadowOpacity = 8
+                    End If
+                End With
+                ucList1.Update
+            Case piDropMaxVisible: ucDrop.MaxVisibleItems = IIf(b, 5, 0)
+            Case piDropWide: ucDrop.ListWidth = IIf(b, 400, 220)
+            Case piDropMulti: ucDrop.MultiSelect = b
+        End Select
+        ShowStatus
+    End Sub
+
+    '======================================================================
+    ' ucActions: metodos
+    '======================================================================
+    Private Sub ucActions_ItemClick()
+        Dim i As Long
+        i = ucActions.ListIndex
+        If i < 0 Then Exit Sub
+        If ucActions.ItemIsGroup(i) Then Exit Sub
+        RunAction CStr(ucActions.ItemData(i)), ucActions.ItemText(i)
+        ShowStatus
+    End Sub
+
+    Private Sub ucActions_DblClick()
+        Log "ucActions_DblClick"
+    End Sub
+
+    Private Sub RunAction(ByVal sKey As String, ByVal sCaption As String)
+        Dim i As Long, n As Long
+        Dim pt As POINTAPI
+        Dim oPic As StdPicture
+        Dim k As Integer
+
+        Log "> " & sCaption
+        With ucList1
+            Select Case sKey
+                Case "add"
+                    m_nNew = m_nNew + 1
+                    .AddItem txtParam.Text & " " & m_nNew, m_nNew Mod 5, "nuevo " & m_nNew, "Anadido por AddItem"
+                    Log "  ListCount=" & .ListCount
+                Case "addat"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    m_nNew = m_nNew + 1
+                    .AddItem "Insertado " & m_nNew, 3, , , , , i
+                    Log "  insertado en " & i & ", ListIndex ahora=" & .ListIndex
+                Case "remove"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .RemoveItem i
+                    Log "  ListCount=" & .ListCount & " ListIndex=" & .ListIndex
+                Case "clear"
+                    .Clear
+                Case "fill"
+                    .Clear
+                    For i = 1 To 30
+                        .AddItem "Elemento " & Format$(i, "00"), (i - 1) Mod 5, "dato " & i, "Subtexto del elemento " & i
+                    Next
+                Case "group"
+                    n = .ListCount
+                    .OpenGroup "Grupo nuevo " & n, 4, "g" & n
+                    .AddItem "Hijo 1", 0
+                    .AddItem "Hijo 2", 1
+                    .AddItem "Hijo 3", 2
+                    .CloseGroup
+                    Log "  grupo en " & n & ": GetGroupChildCounts=" & .GetGroupChildCounts(n)
+                Case "submenu"
+                    ucMenu.AddSubMenu "Submenu anadido " & ucMenu.ListCount, ucSub2, 1
+                    Log "  ucMenu.ListCount=" & ucMenu.ListCount
+                Case "bsortA": .BSort SortAscendant
+                Case "bsortD": .BSort SortDescendant
+                Case "qsortA": .QSort SortAscendant
+                Case "qsortD": .QSort SortDescendant
+
+                Case "text"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemText(i) = txtParam.Text
+                Case "subtext"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemSubText(i) = txtParam.Text
+                    If Not .SubTitleVisible Then Log "  (activa SubTitleVisible para verlo)"
+                Case "color"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemTextColor(i) = vbRed
+                Case "subcolor"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemSubTextColor(i) = RGB(0, 140, 0)
+                Case "back"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemBackColor(i) = RGB(255, 245, 160)
+                Case "backnone"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemBackColor(i) = -1
+                    .ItemTextColor(i) = -1
+                    .ItemSubTextColor(i) = -1
+                Case "disable"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemDisabled(i) = Not .ItemDisabled(i)
+                Case "icon"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    If .ImageListCount > 0 Then .ItemIcon(i) = (.ItemIcon(i) + 1) Mod .ImageListCount
+                Case "data"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemData(i) = Now
+                    Log "  ItemData=" & .ItemData(i)
+                Case "select"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemSelected(i) = Not .ItemSelected(i)
+                    If Not .MultiSelect Then Log "  (activa MultiSelect para ver la casilla)"
+                Case "bold"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    .ItemBold(i) = Not .ItemBold(i)
+                Case "listindex"
+                    .ListIndex = ParamLong(-1)
+                    Log "  ListIndex=" & .ListIndex & " Text=" & .Text
+
+                Case "info"
+                    i = CurIndex(): If i < 0 Then Exit Sub
+                    Log "  Index=" & i & " ItemText=""" & .ItemText(i) & """ ItemSubText=""" & .ItemSubText(i) & """"
+                    Log "  ItemData=" & .ItemData(i) & " ItemIcon=" & .ItemIcon(i) & " ItemDisabled=" & .ItemDisabled(i) & _
+                        " ItemSelected=" & .ItemSelected(i) & " ItemBold=" & .ItemBold(i)
+                    Log "  ItemTextColor=" & .ItemTextColor(i) & " ItemSubTextColor=" & .ItemSubTextColor(i) & " ItemBackColor=" & .ItemBackColor(i)
+                    Log "  ItemIsChild=" & .ItemIsChild(i) & " ItemIsGroup=" & .ItemIsGroup(i) & _
+                        " GetItemParentGroup=" & .GetItemParentGroup(i) & " GetGroupChildCounts=" & .GetGroupChildCounts(i)
+                    n = .GetItemTop(i)
+                    Log "  GetItemTop=" & n & " ItemHitest(GetItemTop+1)=" & .ItemHitest(n + 1)
+                Case "props"
+                    Log "  ListStyle=" & .ListStyle & " ListDesign=" & .ListDesign & " Enabled=" & .Enabled & " Text=""" & .Text & """"
+                    Log "  BackColor=&H" & Hex$(.BackColor) & " SelectionColor=&H" & Hex$(.SelectionColor) & _
+                        " FindTextColor=&H" & Hex$(.FindTextColor) & " LineColor=&H" & Hex$(.LineColor) & " BorderColor=&H" & Hex$(.BorderColor)
+                    Log "  BorderVisible=" & .BorderVisible & " BorderRadius=" & .BorderRadius & " SelectionRadius=" & .SelectionRadius & _
+                        " ImagesRadius=" & .ImagesRadius & " ItemHeight=" & .ItemHeight
+                    Log "  SubTitleVisible=" & .SubTitleVisible & " ShowFilter=" & .ShowFilter & " MultiSelect=" & .MultiSelect & _
+                        " UseMonocromeIcons=" & .UseMonocromeIcons & " DrawSeparatorLine=" & .DrawSeparatorLine
+                    Log "  MaxListHeight=" & .MaxListHeight & " MaxVisibleItems=" & .MaxVisibleItems & " ListWidth=" & .ListWidth & _
+                        " OLEDropMode=" & .OLEDropMode & " MousePointer=" & .MousePointer & " DragMode=" & .DragMode
+                    Log "  Font=" & .Font.Name & " " & .Font.Size & " ListCount=" & .ListCount & " ListIndex=" & .ListIndex & _
+                        " IsListVisible=" & .IsListVisible
+                    Log "  Shadow: ShadowSize=" & .Shadow.ShadowSize & " ShadowOpacity=" & .Shadow.ShadowOpacity & _
+                        " BorderRadius=" & .Shadow.BorderRadius & " hwnd=" & .Shadow.hwnd
+                Case "misc"
+                    Log "  GetWindowDpi=" & .GetWindowDpi & " hWnd=" & .hWnd & " Shadow.GetWindowsDPI=" & .Shadow.GetWindowsDPI
+                    Log "  ChrW2(&H1F600) Len=" & Len(.ChrW2(&H1F600)) & " ChrW2(65)=" & .ChrW2(65)
+                    Log "  RGBtoARGB(vbRed, 50)=&H" & Hex$(.RGBtoARGB(vbRed, 50)) & " RGBtoARGB(vbBlue, 100)=&H" & Hex$(.RGBtoARGB(vbBlue, 100))
+                    Log "  ImgListWidth=" & .ImgListWidth & " ImgListHeight=" & .ImgListHeight & " ImageListCount=" & .ImageListCount
+                    Log "  ucDrop.IsListVisible=" & ucDrop.IsListVisible & " ucMenu.ChildMenu Is Nothing=" & (ucMenu.ChildMenu Is Nothing) & _
+                        " ucSub.ParentMenu Is Nothing=" & (ucSub.ParentMenu Is Nothing)
+                    Log "  MouseIcon Is Nothing=" & (.MouseIcon Is Nothing) & " DragIcon Is Nothing=" & (.DragIcon Is Nothing)
+
+                Case "imgadd"
+                    Log "  ImageListAddImage=" & .ImageListAddImage(ICON3)
+                Case "imghicon"
+                    Log "  ImageListAddImage(HICON)=" & .ImageListAddImage(LoadIconW(0, IDI_INFORMATION))
+                Case "imgpic"
+                    Set oPic = Me.Icon
+                    If oPic Is Nothing Then
+                        Log "  el formulario no tiene icono"
+                    ElseIf oPic.Handle = 0 Then
+                        Log "  el formulario no tiene icono"
+                    Else
+                        Log "  ImageListAddImage(StdPicture)=" & .ImageListAddImage(oPic)
+                    End If
+                Case "imginsert"
+                    If .ImageListCount > 0 Then
+                        Log "  ImageListInsertImage=" & .ImageListInsertImage(ICON4, , 1)
+                    Else
+                        Log "  ImageListAddImage=" & .ImageListAddImage(ICON4)
+                    End If
+                    .Refresh
+                Case "imgremove"
+                    If .ImageListCount > 0 Then Log "  ImageListRemoveImage -> quedan " & .ImageListRemoveImage(.ImageListCount)
+                Case "imgclear"
+                    .ImageListClear
+                    .Refresh
+                Case "imginit24"
+                    LoadIcons ucList1, 24
+                    .Refresh
+                Case "imginit16"
+                    LoadIcons ucList1, 16
+                    .Refresh
+
+                Case "kdown": k = vbKeyDown: .SetKeyDown k
+                Case "kup": k = vbKeyUp: .SetKeyDown k
+                Case "kend": k = vbKeyEnd: .SetKeyDown k
+                Case "kpress"
+                    If Len(txtParam.Text) > 0 Then
+                        k = AscW(txtParam.Text)
+                        .SetKeyPress k
+                    End If
+                Case "focus": .SetFocus
+
+                Case "refresh": .Refresh
+                Case "update": .Update
+                Case "showlist"
+                    GetCursorPos pt
+                    ucDrop.ShowList pt.X, pt.Y
+                Case "hidelist"
+                    ucDrop.HideList
+                Case "oledrag"
+                    Log "  arrastra el raton fuera de la lista y suelta sobre ucList1 (OLEDropMode Manual) o en otra aplicacion"
+                    .OLEDrag
+                Case "drag"
+                    Log "  mueve el raton y haz clic sobre el formulario"
+                    If Not Me.Icon Is Nothing Then Set .DragIcon = Me.Icon
+                    .Drag vbBeginDrag
+                Case "dragmode"
+                    .DragMode = IIf(.DragMode = vbManual, vbAutomatic, vbManual)
+                    Log "  DragMode=" & .DragMode & IIf(.DragMode = vbAutomatic, " (arrastra ucList1 y suelta en el formulario)", "")
+                Case "liststyle"
+                    .ListStyle = StyleDropDown
+                    Log "  ListStyle=" & .ListStyle & " (oculto)"
+                    .ListStyle = StyleListBox
+                    Log "  ListStyle=" & .ListStyle & " (visible de nuevo)"
+                Case "clearlog"
+                    txtLog.Text = ""
+                Case Else
+                    Log "  accion desconocida: " & sKey
+            End Select
+        End With
+    End Sub
+
+    '======================================================================
+    ' Eventos de ucList1
+    '======================================================================
+    Private Sub ucList1_IndexChange()
+        Log "ucList1_IndexChange: ListIndex=" & ucList1.ListIndex & " Text=""" & ucList1.Text & """"
+        ShowStatus
+    End Sub
+
+    Private Sub ucList1_ItemClick()
+        Log "ucList1_ItemClick: ListIndex=" & ucList1.ListIndex & " Text=""" & ucList1.Text & """"
+        ShowStatus
+    End Sub
+
+    Private Sub ucList1_DblClick()
+        Log "ucList1_DblClick"
+    End Sub
+
+    Private Sub ucList1_HideList()
+        Log "ucList1_HideList"
+    End Sub
+
+    Private Sub ucList1_ScrollBottom()
+        Dim i As Long
+        Log "ucList1_ScrollBottom"
+        ' Carga incremental (maximo 3 veces)
+        If m_nScrollAdds < 3 Then
+            m_nScrollAdds = m_nScrollAdds + 1
+            For i = 1 To 5
+                ucList1.AddItem "Cargado al final " & m_nScrollAdds & "." & i, 4
+            Next
+            Log "  +5 elementos (ListCount=" & ucList1.ListCount & ")"
+        End If
+    End Sub
+
+    Private Sub ucList1_PostAutoComplete()
+        Log "ucList1_PostAutoComplete"
+    End Sub
+
+    Private Sub ucList1_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Log "ucList1_MouseDown: Button=" & ButtonName(Button) & " Shift=" & Shift & " X=" & X & " Y=" & Y & _
+            " ItemHitest(Y)=" & ucList1.ItemHitest(CLng(Y))
+    End Sub
+
+    Private Sub ucList1_MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        m_nMouseMove = m_nMouseMove + 1
+        If (m_nMouseMove Mod 10) = 0 Then ShowStatus
+    End Sub
+
+    Private Sub ucList1_MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Log "ucList1_MouseUp: Button=" & ButtonName(Button) & " X=" & X & " Y=" & Y
+        If Button = vbRightButton Then ShowMenuAtCursor
+    End Sub
+
+    Private Sub ucList1_KeyDown(KeyCode As Integer, Shift As Integer)
+        Log "ucList1_KeyDown: KeyCode=" & KeyCode & " Shift=" & Shift
+    End Sub
+
+    Private Sub ucList1_KeyUp(KeyCode As Integer, Shift As Integer)
+        Log "ucList1_KeyUp: KeyCode=" & KeyCode
+    End Sub
+
+    Private Sub ucList1_KeyPress(KeyAscii As Integer)
+        Log "ucList1_KeyPress: KeyAscii=" & KeyAscii & " (" & ChrW$(KeyAscii And &HFFFF&) & ")"
+    End Sub
+
+    Private Sub ucList1_PostPaint(ByVal hdc As LongPtr)
+        Dim s As String
+        If Not m_bPostPaint Then Exit Sub
+        s = "PostPaint"
+        SetBkMode hdc, 1
+        SetTextColor hdc, vbRed
+        TextOutW hdc, 30, 2, StrPtr(s), Len(s)
+        ' ImageListDraw: icono 1 tenido de rojo junto al texto
+        If ucList1.ImageListCount > 0 Then ucList1.ImageListDraw hdc, 1, 8, 2, 16, 16, vbRed
+    End Sub
+
+    Private Sub ucList1_ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long)
+        Dim rc As RECT
+        Dim hBr As LongPtr
+        If Not m_bCustomDraw Then Exit Sub
+        rc.Left = Left
+        rc.Top = Top + 2
+        rc.Right = Left + 4
+        rc.Bottom = Top + Height - 2
+        hBr = CreateSolidBrush(IIf(Index Mod 2 = 0, RGB(0, 150, 255), RGB(255, 120, 0)))
+        FillRect hdc, rc, hBr
+        DeleteObject hBr
+    End Sub
+
+    Private Sub ucList1_OLEStartDrag(Data As DataObject, AllowedEffects As Long)
+        Data.SetData ucList1.Text, vbCFText
+        AllowedEffects = vbDropEffectCopy
+        Log "ucList1_OLEStartDrag: """ & ucList1.Text & """"
+    End Sub
+
+    Private Sub ucList1_OLESetData(Data As DataObject, DataFormat As Integer)
+        Log "ucList1_OLESetData: DataFormat=" & DataFormat
+    End Sub
+
+    Private Sub ucList1_OLEGiveFeedback(Effect As Long, DefaultCursors As Boolean)
+        ' Se dispara muchas veces: no se registra
+    End Sub
+
+    Private Sub ucList1_OLECompleteDrag(Effect As Long)
+        Log "ucList1_OLECompleteDrag: Effect=" & Effect
+    End Sub
+
+    Private Sub ucList1_OLEDragOver(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single, State As Integer)
+        If State = vbEnter Then Log "ucList1_OLEDragOver: entra"
+        Effect = vbDropEffectCopy
+    End Sub
+
+    Private Sub ucList1_OLEDragDrop(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single)
+        If Data.GetFormat(vbCFText) Then
+            ucList1.AddItem "Soltado: " & Data.GetData(vbCFText), 2
+            Log "ucList1_OLEDragDrop: """ & Data.GetData(vbCFText) & """"
+        ElseIf Data.GetFormat(vbCFFiles) Then
+            ucList1.AddItem "Archivo: " & Data.Files(1), 1
+            Log "ucList1_OLEDragDrop: archivo " & Data.Files(1)
+        End If
+    End Sub
+
+    Private Sub Form_DragDrop(Source As Control, X As Single, Y As Single)
+        Log "Form_DragDrop: soltado " & TypeName(Source) & " en X=" & X & " Y=" & Y
+    End Sub
+
+    '======================================================================
+    ' DropDown
+    '======================================================================
+    Private Sub cmdDrop_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim rc As RECT
+        ' Boton conmutador: el clic fuera cierra la lista despues de este evento,
+        ' asi que aqui aun se ve abierta.
+        If ucDrop.IsListVisible Then
+            ucDrop.HideList
+        Else
+            GetWindowRect cmdDrop.hWnd, rc
+            ucDrop.ShowList rc.Left, rc.Bottom + 2, rc.Right, rc.Top - 2
+        End If
+    End Sub
+
+    Private Sub ucDrop_ItemClick()
+        Dim i As Long, s As String
+        If ucDrop.MultiSelect Then
+            For i = 0 To ucDrop.ListCount - 1
+                If ucDrop.ItemSelected(i) Then s = s & ucDrop.ItemText(i) & ", "
+            Next
+            Log "ucDrop_ItemClick (MultiSelect): " & s
+        Else
+            cmdDrop.Caption = ucDrop.Text & "  " & ChrW$(&H25BC)
+            Log "ucDrop_ItemClick: " & ucDrop.Text
+        End If
+        ShowStatus
+    End Sub
+
+    Private Sub ucDrop_IndexChange()
+        Log "ucDrop_IndexChange: " & ucDrop.ListIndex
+    End Sub
+
+    Private Sub ucDrop_HideList()
+        Log "ucDrop_HideList"
+    End Sub
+
+    Private Sub ucDrop_KeyPress(KeyAscii As Integer)
+        Log "ucDrop_KeyPress: " & KeyAscii
+    End Sub
+
+    Private Sub ucDrop_ScrollBottom()
+        Log "ucDrop_ScrollBottom"
+    End Sub
+
+    '======================================================================
+    ' Menus
+    '======================================================================
+    Private Sub cmdMenu_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        Dim rc As RECT
+        If ucMenu.IsListVisible Then
+            ucMenu.HideList
+        Else
+            GetWindowRect cmdMenu.hWnd, rc
+            ucMenu.ListIndex = -1
+            ucMenu.ShowList rc.Left, rc.Bottom, rc.Right, rc.Top
+        End If
+    End Sub
+
+    Private Sub ShowMenuAtCursor()
+        Dim pt As POINTAPI
+        GetCursorPos pt
+        ucMenu.ListIndex = -1
+        ucMenu.ShowList pt.X, pt.Y, pt.X, pt.Y
+    End Sub
+
+    Private Sub Form_MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
+        If Button = vbRightButton Then ShowMenuAtCursor
+    End Sub
+
+    Private Sub ucMenu_ItemClick()
+        Log "ucMenu_ItemClick: " & Replace$(ucMenu.Text, vbTab, " | ")
+    End Sub
+
+    Private Sub ucMenu_HideList()
+        Log "ucMenu_HideList"
+    End Sub
+
+    Private Sub ucSub_IndexChange()
+        ' Mientras el submenu esta abierto, ParentMenu apunta a ucMenu
+        Log "ucSub_IndexChange: " & ucSub.ListIndex & " (ParentMenu asignado=" & (Not (ucSub.ParentMenu Is Nothing)) & ")"
+    End Sub
+
+    Private Sub ucSub_ItemClick()
+        Log "ucSub_ItemClick: " & ucSub.Text
+    End Sub
+
+    Private Sub ucSub2_ItemClick()
+        Log "ucSub2_ItemClick: " & ucSub2.Text
+    End Sub
+
+    '======================================================================
+    ' Autocompletar: un mismo ucList para dos TextBox
+    '======================================================================
+    Private Sub txtAuto1_GotFocus()
+        ucAuto.AutoCompleteTextBox txtAuto1.hWnd
+    End Sub
+
+    Private Sub txtAuto2_GotFocus()
+        ucAuto.AutoCompleteTextBox txtAuto2.hWnd
+    End Sub
+
+    Private Sub ucAuto_ItemClick()
+        Log "ucAuto_ItemClick: " & ucAuto.Text
+    End Sub
+
+    Private Sub ucAuto_PostAutoComplete()
+        Log "ucAuto_PostAutoComplete: txtAuto1=""" & txtAuto1.Text & """ txtAuto2=""" & txtAuto2.Text & """"
+    End Sub
+
+    Private Sub ucAuto_HideList()
+        Log "ucAuto_HideList"
+    End Sub
+
+End Class
