@@ -56,7 +56,6 @@ Class ClsShadow
     Private Declare PtrSafe Function CreateRectRgn Lib "gdi32" (ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long) As LongPtr
     Private Declare PtrSafe Function CombineRgn Lib "gdi32" (ByVal hrgnDst As LongPtr, ByVal hrgnSrc1 As LongPtr, ByVal hrgnSrc2 As LongPtr, ByVal iMode As Long) As Long
     Private Declare PtrSafe Function OffsetRgn Lib "gdi32" (ByVal hRgn As LongPtr, ByVal X As Long, ByVal Y As Long) As Long
-    Private Declare PtrSafe Function DrawThemeParentBackground Lib "uxtheme" (ByVal hWnd As LongPtr, ByVal hDC As LongPtr, ByVal prc As LongPtr) As Long
     Private Declare PtrSafe Function GdipCreateFromHDC Lib "gdiplus" (ByVal hDC As LongPtr, ByRef graphics As LongPtr) As Long
     Private Declare PtrSafe Function GdipDeleteGraphics Lib "gdiplus" (ByVal graphics As LongPtr) As Long
     Private Declare PtrSafe Function GdipSetSmoothingMode Lib "gdiplus" (ByVal graphics As LongPtr, ByVal SmoothingMode As Long) As Long
@@ -64,6 +63,9 @@ Class ClsShadow
     Private Declare PtrSafe Function GdipDeletePath Lib "gdiplus" (ByVal path As LongPtr) As Long
     Private Declare PtrSafe Function GdipAddPathArcI Lib "gdiplus" (ByVal path As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal Width As Long, ByVal Height As Long, ByVal startAngle As Single, ByVal sweepAngle As Single) As Long
     Private Declare PtrSafe Function GdipAddPathRectangleI Lib "gdiplus" (ByVal path As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal Width As Long, ByVal Height As Long) As Long
+    Private Declare PtrSafe Function GdipAddPathArc Lib "gdiplus" (ByVal path As LongPtr, ByVal X As Single, ByVal Y As Single, ByVal Width As Single, ByVal Height As Single, ByVal startAngle As Single, ByVal sweepAngle As Single) As Long
+    Private Declare PtrSafe Function GdipAddPathRectangle Lib "gdiplus" (ByVal path As LongPtr, ByVal X As Single, ByVal Y As Single, ByVal Width As Single, ByVal Height As Single) As Long
+    Private Declare PtrSafe Function GdipSetPixelOffsetMode Lib "gdiplus" (ByVal graphics As LongPtr, ByVal PixelOffsetMode As Long) As Long
     Private Declare PtrSafe Function GdipClosePathFigure Lib "gdiplus" (ByVal path As LongPtr) As Long
     Private Declare PtrSafe Function GdipCreateSolidFill Lib "gdiplus" (ByVal argb As Long, ByRef brush As LongPtr) As Long
     Private Declare PtrSafe Function GdipDeleteBrush Lib "gdiplus" (ByVal brush As LongPtr) As Long
@@ -160,6 +162,7 @@ Class ClsShadow
     Private Const LOGPIXELSX        As Long = 88
     Private Const CLR_NONE          As Long = &HFFFFFFFF
     Private Const SmoothingModeAntiAlias As Long = 4
+    Private Const PixelOffsetModeHalf   As Long = 4     'coordenadas = bordes de pixel
     Private Const CombineModeExclude As Long = 4
     Private Const CombineModeIntersect As Long = 1
     Private Const UnitPixel         As Long = 2
@@ -507,20 +510,22 @@ Class ClsShadow
         End If
     End Function
 
-    Private Function RoundPath(ByVal X As Long, ByVal Y As Long, ByVal W As Long, ByVal H As Long, ByVal D As Long) As LongPtr
+    ' Rectangulo redondeado (D = diametro de las esquinas). Coordenadas en
+    ' bordes de pixel (se dibuja con PixelOffsetModeHalf).
+    Private Function RoundPath(ByVal X As Single, ByVal Y As Single, ByVal W As Single, ByVal H As Single, ByVal D As Single) As LongPtr
         Dim p As LongPtr
         If W < 1 Then W = 1
         If H < 1 Then H = 1
-        If D * 2 > W Then D = W \ 2
-        If D * 2 > H Then D = H \ 2
+        If D > W Then D = W
+        If D > H Then D = H
         If GdipCreatePath(0, p) <> 0 Then Exit Function
-        If D <= 0 Then
-            GdipAddPathRectangleI p, X, Y, W, H
+        If D <= 1 Then
+            GdipAddPathRectangle p, X, Y, W, H
         Else
-            GdipAddPathArcI p, X, Y, D, D, 180, 90
-            GdipAddPathArcI p, X + W - D, Y, D, D, 270, 90
-            GdipAddPathArcI p, X + W - D, Y + H - D, D, D, 0, 90
-            GdipAddPathArcI p, X, Y + H - D, D, D, 90, 90
+            GdipAddPathArc p, X, Y, D, D, 180, 90
+            GdipAddPathArc p, X + W - D, Y, D, D, 270, 90
+            GdipAddPathArc p, X + W - D, Y + H - D, D, D, 0, 90
+            GdipAddPathArc p, X, Y + H - D, D, D, 90, 90
             GdipClosePathFigure p
         End If
         RoundPath = p
@@ -530,19 +535,26 @@ Class ClsShadow
     Private Sub RenderShape(ByVal hDC As LongPtr, ByVal W As Long, ByVal H As Long)
         Dim g As LongPtr, pth As LongPtr, ps As LongPtr
         Dim br As LongPtr, pn As LongPtr
-        Dim I As Long, D As Long, S As Long, k As Long
+        Dim S As Long, k As Long
         Dim ox As Long, oy As Long
-        Dim px0 As Long, py0 As Long, pw As Long, ph As Long
+        Dim sOut As Single, D As Single, BW As Single
+        Dim px0 As Single, py0 As Single, pw As Single, ph As Single
         Dim dAlpha As Double, lA As Long
         Dim hHole As LongPtr
 
         If GdipCreateFromHDC(hDC, g) <> 0 Then Exit Sub
         GdipSetSmoothingMode g, SmoothingModeAntiAlias
+        GdipSetPixelOffsetMode g, PixelOffsetModeHalf
 
-        I = Px(m_Margin) + Px(m_BorderWidth) \ 2
-        D = Px(m_BorderRadius)
-        px0 = m_dx - I: py0 = m_dy - I
-        pw = m_tW + I * 2: ph = m_tH + I * 2
+        ' La figura rodea la ventana destino por FUERA: el trazo del borde va
+        ' centrado a Margin + BorderWidth/2 del contorno, asi la franja del
+        ' borde queda entera fuera de la ventana (los cuatro lados visibles).
+        If m_BorderWidth > 0 Then BW = m_BorderWidth * m_Dpi
+        sOut = m_Margin * m_Dpi + BW / 2
+        D = m_BorderRadius * m_Dpi
+        If D > 0 Then D = D + sOut * 2
+        px0 = m_dx - sOut: py0 = m_dy - sOut
+        pw = m_tW + sOut * 2: ph = m_tH + sOut * 2
         pth = RoundPath(px0, py0, pw, ph, D)
 
         ' Sombra: capas concentricas cuya opacidad acumulada en el borde de la
@@ -578,7 +590,7 @@ Class ClsShadow
             End If
             GdipResetClip g
             If m_BorderWidth > 0 And m_BorderOpacity > 0 Then
-                GdipCreatePen1 ARGB(m_BorderColor, m_BorderOpacity), Px(m_BorderWidth), UnitPixel, pn
+                GdipCreatePen1 ARGB(m_BorderColor, m_BorderOpacity), BW, UnitPixel, pn
                 GdipDrawPath g, pn, pth
                 GdipDeletePen pn
             End If
@@ -667,8 +679,9 @@ Class ClsShadow
                     hBr = CreateSolidBrush(lBk)
                     FillRect hMemDC, rc, hBr
                     DeleteObject hBr
-                ElseIf DrawThemeParentBackground(m_hShadow, hMemDC, 0) <> 0 Then
-                    ' el contenedor no pinta su fondo: usar su color de fondo de DC
+                Else
+                    ' Sin ContainerBkColor: color de fondo del DC del contenedor
+                    ' (como el original)
                     hParentDC = GetDC(GetParent(m_hShadow))
                     lBk = GetBkColor(hParentDC)
                     ReleaseDC GetParent(m_hShadow), hParentDC

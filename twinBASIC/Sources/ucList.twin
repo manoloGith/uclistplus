@@ -665,9 +665,7 @@ Class ucList
     Private Sub UserControl_Show()
         If Ambient.UserMode Then
             EnsureRuntime
-            If m_ListStyle = StyleListBox And m_BorderVisible Then
-                cShadow.ShowBorders UserControl.hWnd, True
-            End If
+            If m_ListStyle = StyleListBox And m_BorderVisible Then ShowListBoxBorder
         Else
             DesignRender
         End If
@@ -700,8 +698,9 @@ Class ucList
     End Sub
 
     Private Sub UserControl_AmbientChanged(PropertyName As String)
-        If PropertyName = "BackColor" And m_ListStyle = StyleListBox Then
-            If m_BorderVisible Then cShadow.Refresh
+        If PropertyName = "BackColor" Then
+            cShadow.ContainerBkColor = Ambient.BackColor
+            If m_ListStyle = StyleListBox And m_BorderVisible Then cShadow.Refresh
         End If
     End Sub
 
@@ -882,6 +881,17 @@ Class ucList
             FocusTarget = m_hList
         End If
     End Function
+
+    ' Borde y sombra del modo ListBox. La sombra es una ventana hija del
+    ' contenedor: se le pasa su color de fondo para pintar lo que queda fuera
+    ' del borde (sin esto se veria el fondo por defecto, blanco).
+    Private Sub ShowListBoxBorder()
+        On Error Resume Next
+        cShadow.ContainerBkColor = Ambient.BackColor
+        On Error GoTo 0
+        cShadow.BackColor = UserControl.BackColor
+        cShadow.ShowBorders UserControl.hWnd, True
+    End Sub
 
     ' Region redondeada (como el original)
     Private Sub ApplyRegion(ByVal hWnd As LongPtr, ByVal W As Long, ByVal H As Long)
@@ -1327,7 +1337,7 @@ Class ucList
             If m_ListStyle = StyleListBox Then
                 UserControl.Extender.Visible = True
                 EnsureRuntime
-                If m_BorderVisible Then cShadow.ShowBorders UserControl.hWnd, True
+                If m_BorderVisible Then ShowListBoxBorder
             Else
                 cShadow.HideBorders
                 EnsureRuntime
@@ -1386,7 +1396,7 @@ Class ucList
         If Ambient.UserMode Then
             If m_ListStyle = StyleListBox Then
                 If m_BorderVisible Then
-                    cShadow.ShowBorders UserControl.hWnd, True
+                    ShowListBoxBorder
                 Else
                     cShadow.HideBorders
                 End If
