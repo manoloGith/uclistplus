@@ -3,7 +3,7 @@
 		"AccessKeys": null,
 		"Alignable": false,
 		"Appearance": "vbAppear3d",
-		"AutoRedraw": false,
+		"AutoRedraw": true,
 		"BackColor": -2147483643,
 		"BackStyle": "vbBFOpaque",
 		"BorderStyle": "vbNoBorder",

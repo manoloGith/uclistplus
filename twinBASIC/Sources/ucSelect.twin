@@ -18,6 +18,10 @@ Class ucSelect
     Private Declare PtrSafe Function DrawText Lib "user32" Alias "DrawTextW" (ByVal hDC As LongPtr, ByVal lpStr As LongPtr, ByVal nCount As Long, ByRef lpRect As RECT, ByVal wFormat As Long) As Long
     Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
     Private Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (ByRef Destination As Any, ByRef Source As Any, ByVal Length As LongPtr)
+    Private Declare PtrSafe Function SelectObject Lib "gdi32" (ByVal hDC As LongPtr, ByVal hObject As LongPtr) As LongPtr
+    Private Declare PtrSafe Function SetTextColor Lib "gdi32" (ByVal hDC As LongPtr, ByVal crColor As Long) As Long
+    Private Declare PtrSafe Function SetBkMode Lib "gdi32" (ByVal hDC As LongPtr, ByVal nBkMode As Long) As Long
+    Private Declare PtrSafe Function GetSysColor Lib "user32" (ByVal nIndex As Long) As Long
 
     Private Type RECT
         Left As Long
@@ -53,6 +57,7 @@ Class ucSelect
     Public Property Let BackColor(ByVal New_Value As OLE_COLOR)
         UserControl.BackColor = New_Value
         DrawArrow
+        DrawContent
         If Ambient.UserMode Then cShadow.BackColor = New_Value
         UserControl.PropertyChanged "BackColor"
     End Property
@@ -73,7 +78,7 @@ Class ucSelect
             .Charset = new_Font.Charset
         End With
         UserControl.PropertyChanged "Font"
-        UserControl.Refresh
+        DrawContent
     End Property
 
     Public Property Get Text() As String
@@ -82,7 +87,7 @@ Class ucSelect
 
     Public Property Let Text(ByVal New_Value As String)
         m_Text = New_Value
-        UserControl.Refresh
+        DrawContent
         UserControl.PropertyChanged "Text"
     End Property
 
@@ -91,8 +96,8 @@ Class ucSelect
     End Sub
 
     Private Sub ucList1_ItemClick()
-        m_Text = ucList1.ItemText(ucList1.ListIndex)
-        UserControl.Refresh
+        If ucList1.ListIndex > -1 Then m_Text = ucList1.ItemText(ucList1.ListIndex)
+        DrawContent
         RaiseEvent ItemClick
     End Sub
 
@@ -113,6 +118,10 @@ Class ucSelect
     End Sub
 
     Private Sub UserControl_Initialize()
+        ' En VB6 el texto se pintaba en UserControl_Paint (AutoRedraw = False) y
+        ' UserControl.Refresh provocaba el Paint. En twinBASIC ese repintado no llega a
+        ' verse, asi que se pinta igual que ucList: AutoRedraw + Refresh (DrawContent).
+        UserControl.AutoRedraw = True
         Set cShadow = New ClsShadow
         DpiFactor = cShadow.GetWindowsDPI
         lMargin = 8 * DpiFactor
@@ -179,8 +188,15 @@ Class ucSelect
         ucList1.ShowList tR.Left - M, tR.Bottom + M + B, 0, tR.Top - M - B
     End Sub
 
-    Private Sub UserControl_Paint()
+    ' Pinta el texto (y el icono) del elemento seleccionado. Antes: UserControl_Paint.
+    Private Sub DrawContent()
         Dim tR As RECT
+        Dim oFont As IFont
+        Dim lHdc As LongPtr, hOldFont As LongPtr
+        Dim lColor As Long
+
+        UserControl.Cls
+        lHdc = UserControl.hDC
 
         If Len(m_Text) > 0 Then
             With tR
@@ -190,15 +206,24 @@ Class ucSelect
             End With
             If ucList1.ImageListCount > 0 And ucList1.ListIndex > -1 Then
 
-                ucList1.ImageListDraw UserControl.hDC, ucList1.ItemIcon(ucList1.ListIndex) + 1, _
+                ucList1.ImageListDraw lHdc, ucList1.ItemIcon(ucList1.ListIndex) + 1, _
                     tR.Left, UserControl.ScaleHeight / 2 - ucList1.ImgListHeight / 2, _
                     ucList1.ImgListWidth, ucList1.ImgListHeight
 
                 tR.Left = tR.Left + ucList1.ImgListWidth + lMargin
             End If
 
-            DrawText UserControl.hDC, StrPtr(m_Text), -1, tR, DT_SINGLELINE Or DT_VCENTER
+            Set oFont = UserControl.Font
+            hOldFont = SelectObject(lHdc, oFont.hFont)
+            lColor = UserControl.ForeColor
+            If (lColor And &H80000000) Then lColor = GetSysColor(lColor And &HFF&)
+            SetTextColor lHdc, lColor
+            SetBkMode lHdc, 1    'TRANSPARENT
+            DrawText lHdc, StrPtr(m_Text), -1, tR, DT_SINGLELINE Or DT_VCENTER
+            SelectObject lHdc, hOldFont
         End If
+
+        UserControl.Refresh
     End Sub
 
     Private Sub UserControl_InitProperties()
@@ -212,6 +237,7 @@ Class ucSelect
         End With
 
         If Ambient.UserMode Then EnsureSubclass
+        DrawContent
     End Sub
 
     Private Sub UserControl_WriteProperties(PropBag As PropertyBag)
@@ -224,6 +250,7 @@ Class ucSelect
     Private Sub UserControl_Resize()
         Picture1.Move UserControl.ScaleWidth - UserControl.ScaleHeight, 0, UserControl.ScaleHeight, UserControl.ScaleHeight
         DrawArrow
+        DrawContent
     End Sub
 
     Private Sub UserControl_Show()
@@ -237,6 +264,7 @@ Class ucSelect
                 .ShowBorders UserControl.hWnd, True
             End With
         End If
+        DrawContent
     End Sub
 
     Private Sub UserControl_Terminate()

@@ -151,6 +151,23 @@ Estos cambios no afectan al código en 32 bits:
 - `ImageListDraw(ByVal hdc As LongPtr, ...)`.
 - `ImageListAddImage` acepta también handles `LongLong` (HBITMAP/HICON en 64 bits).
 
+### Correcciones tras las pruebas
+- **`ucSelect` no mostraba el elemento elegido.** El original pintaba el texto en
+  `UserControl_Paint` con `AutoRedraw = False` y dependía de que `Refresh` provocara
+  `Paint`. En twinBASIC ese repintado no se veía. Ahora pinta igual que `ucList`, con
+  `AutoRedraw = True` (`DrawContent` + `Refresh`).
+- **Una lista desplegable volvía a aparecer donde se había abierto la vez anterior.**
+  Pasaba al cambiar con Tab a otro `TextBox` con `AutoCompleteTextBox`.
+  `AutoCompleteTextBox` y `ShowList` vacían el filtro, lo que ejecuta `Text1_Change`.
+  Con la lista cerrada, esa rutina redimensionaba el popup y llamaba a
+  `cShadow.Refresh`, que vuelve a mostrar la sombra en las coordenadas antiguas.
+  Además, si la lista se había abierto por encima del campo, llamaba a
+  `SetWindowPos … SWP_SHOWWINDOW`, que mostraba la propia lista. Ahora, con la lista
+  cerrada, solo se reinicia el filtro. `Update` tampoco reactiva la sombra de una
+  lista desplegable cerrada.
+- En `Draw`, los eventos `ItemCustomDraw` y `PostPaint` reciben explícitamente el
+  `hDC` del control.
+
 ### Errores del original corregidos
 - `BSort SortAscendant` ordenaba en forma descendente (las dos ramas eran iguales).
 - `SelectionRadius` marcaba como modificada la propiedad `ImagesRadius`.
