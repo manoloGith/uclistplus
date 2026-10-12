@@ -15,6 +15,8 @@ Class ucSelect
 
     Option Explicit
 
+    Implements IUcListNotify
+
     Private Declare PtrSafe Function DrawText Lib "user32" Alias "DrawTextW" (ByVal hDC As LongPtr, ByVal lpStr As LongPtr, ByVal nCount As Long, ByRef lpRect As RECT, ByVal wFormat As Long) As Long
     Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
     Private Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (ByRef Destination As Any, ByRef Source As Any, ByVal Length As LongPtr)
@@ -91,11 +93,15 @@ Class ucSelect
         UserControl.PropertyChanged "Text"
     End Property
 
-    Private Sub ucList1_IndexChange()
-        ucList1_ItemClick
+    ' Antes: ucList1_IndexChange y ucList1_ItemClick (eventos del ucList interno).
+    ' Ahora el ucList llama directamente a IUcListNotify_ListNotify (ver zzSetNotify),
+    ' asi no depende de que twinBASIC entregue eventos entre UserControls anidados.
+    ' IndexChange e ItemClick hacian lo mismo en el original.
+    Private Sub IUcListNotify_ListNotify(ByVal EventId As Long) Implements IUcListNotify.ListNotify
+        OnListItemClick
     End Sub
 
-    Private Sub ucList1_ItemClick()
+    Private Sub OnListItemClick()
         If ucList1.ListIndex > -1 Then m_Text = ucList1.ItemText(ucList1.ListIndex)
         DrawContent
         RaiseEvent ItemClick
@@ -228,6 +234,7 @@ Class ucSelect
 
     Private Sub UserControl_InitProperties()
         If Ambient.UserMode Then EnsureSubclass
+        ucList1.zzSetNotify Me
     End Sub
 
     Private Sub UserControl_ReadProperties(PropBag As PropertyBag)
@@ -237,6 +244,7 @@ Class ucSelect
         End With
 
         If Ambient.UserMode Then EnsureSubclass
+        ucList1.zzSetNotify Me
         DrawContent
     End Sub
 
@@ -255,6 +263,7 @@ Class ucSelect
 
     Private Sub UserControl_Show()
         If Ambient.UserMode Then
+            ucList1.zzSetNotify Me
             EnsureSubclass
             With cShadow
                 .ShadowColor = &HFF9033
@@ -268,6 +277,9 @@ Class ucSelect
     End Sub
 
     Private Sub UserControl_Terminate()
+        On Error Resume Next
+        ucList1.zzSetNotify Nothing
+        On Error GoTo 0
         If m_hWndSubclassed <> 0 Then
             UCL_UnsubclassSelect m_hWndSubclassed, ObjPtr(Me)
             m_hWndSubclassed = 0

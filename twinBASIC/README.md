@@ -13,6 +13,7 @@ métodos públicos** que el `ucList.ctl` original y compila tanto en **32 como e
 | `Sources/ClsShadow.twin` | Clase de sombra/borde (`ucList.Shadow`), convertida a 64 bits |
 | `Sources/mUcListHelpers.twin` | Módulo de subclasificación (`SetWindowSubclass`) |
 | `Sources/ucSelect.twin` + `.tbcontrol` | Control ComboBox de ejemplo (usa un `ucList` interno) |
+| `Sources/IUcListNotify.twin` | Interfaz con la que el `ucList` avisa al `ucSelect` |
 | `Sources/JsonBag.twin` | Parser JSON usado por los ejemplos `FrmComboBox` y `FrmGoogleSearch` |
 | `Sources/Forms/*.tbform` + `*.twin` | Los 10 formularios de ejemplo recreados |
 | `Demo/*.bmp` | Imágenes de `FrmGoogleSearch` extraídas de su `.frx` |
@@ -167,6 +168,19 @@ Estos cambios no afectan al código en 32 bits:
   lista desplegable cerrada.
 - En `Draw`, los eventos `ItemCustomDraw` y `PostPaint` reciben explícitamente el
   `hDC` del control.
+- **(2ª ronda) La lista seguía abriéndose en el `TextBox` anterior tras Enter + Tab.**
+  En twinBASIC el `TextBox` recibe también el `WM_CHAR` del Tabulador (en VB6 el
+  formulario se lo quedaba). El original solo ignoraba Enter (13), así que el Tab se
+  trataba como si se hubiera escrito algo. Con la lista cerrada, se buscaba otra vez
+  el texto recién elegido y la lista se abría en ese `TextBox`, el anterior, justo
+  antes de pasar el foco al siguiente. Ahora el `WM_CHAR` del `TextBox` origen solo se
+  procesa si ese `TextBox` tiene el foco, si es un carácter imprimible o Backspace, y
+  si el texto realmente cambió.
+- **(2ª ronda) `ucSelect` seguía sin mostrar la opción elegida.** Ahora el `ucList`
+  interno avisa directamente al `ucSelect` mediante la interfaz `IUcListNotify`
+  (`Sources/IUcListNotify.twin`), justo antes de cada `ItemClick`/`IndexChange`. Ya no
+  depende de que twinBASIC entregue los eventos de un UserControl anidado al
+  UserControl que lo contiene. El texto se pinta con `AutoRedraw` (`DrawContent`).
 
 ### Errores del original corregidos
 - `BSort SortAscendant` ordenaba en forma descendente (las dos ramas eran iguales).
@@ -179,6 +193,12 @@ Estos cambios no afectan al código en 32 bits:
   al terminar cada repintado.
 
 ## Notas
+- Formato de los archivos: los `.twin`, `.tbform` y `.tbcontrol` usan saltos de línea
+  CR+LF (`\r\n`), igual que los que genera el IDE de twinBASIC. Formularios, clases y
+  UserControls están dentro de `Class Nombre … End Class` y el módulo dentro de
+  `Module Nombre … End Module`. Cada formulario va acompañado de su `.tbform` y cada
+  UserControl de su `.tbcontrol`, que es la extensión que usa twinBASIC para el
+  diseñador de los controles de usuario.
 - Este código no se pudo compilar en el entorno en que se convirtió, porque
   twinBASIC solo funciona en Windows. Si al importarlo aparece algún error de
   compilación, suele bastar con ajustes menores.

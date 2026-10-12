@@ -394,6 +394,11 @@ Class ucList
     ' Barra de desplazamiento interna
     Private SB              As tScrollBar
 
+    ' Propietario notificado directamente (ucSelect), referencia debil
+    Private m_pNotify       As LongPtr
+    Private Const UCL_NOTIFY_ITEMCLICK   As Long = 1
+    Private Const UCL_NOTIFY_INDEXCHANGE As Long = 2
+
     ' Control EDIT del filtro creado por codigo (reemplaza al TextBox Text1)
     Private m_hEdit         As LongPtr
     Private m_EditText      As String   'copia del texto actual (Text1.Text)
@@ -407,6 +412,43 @@ Class ucList
     Private m_hEditBrush    As LongPtr
     Private m_EditBrushColor As Long
     Private m_EditSkipChar  As Boolean
+
+    '======================================================================
+    ' Notificacion directa a un control propietario (ucSelect)
+    '======================================================================
+    ' ucSelect contiene un ucList. En lugar de depender de que los eventos de un
+    ' UserControl anidado lleguen al UserControl que lo contiene, el propietario se
+    ' registra con zzSetNotify y recibe la llamada IUcListNotify.ListNotify justo
+    ' antes de cada RaiseEvent ItemClick / IndexChange. Se guarda una referencia
+    ' debil (solo el puntero) para no crear un ciclo de referencias.
+    Public Sub zzSetNotify(ByVal Sink As Object)
+        Dim oNotify As IUcListNotify
+        If Sink Is Nothing Then
+            m_pNotify = 0
+        Else
+            Set oNotify = Sink
+            m_pNotify = ObjPtr(oNotify)
+        End If
+    End Sub
+
+    Private Sub NotifyOwner(ByVal EventId As Long)
+        Dim oNotify As IUcListNotify
+        Dim pZero As LongPtr
+        If m_pNotify = 0 Then Exit Sub
+        CopyMemory oNotify, m_pNotify, LenB(m_pNotify)      'referencia sin AddRef
+        oNotify.ListNotify EventId
+        CopyMemory oNotify, pZero, LenB(pZero)              'soltarla sin Release
+    End Sub
+
+    Private Sub RaiseItemClick()
+        NotifyOwner UCL_NOTIFY_ITEMCLICK
+        RaiseEvent ItemClick
+    End Sub
+
+    Private Sub RaiseIndexChange()
+        NotifyOwner UCL_NOTIFY_INDEXCHANGE
+        RaiseEvent IndexChange
+    End Sub
 
     '======================================================================
     ' Metodos publicos
@@ -1547,7 +1589,7 @@ Class ucList
                     If IsItemSelectable(i) Then
                         m_Index = i
                         FocusItem m_Index
-                        RaiseEvent IndexChange
+                        RaiseIndexChange
                         Exit For
                     End If
                 Next
@@ -1558,7 +1600,7 @@ Class ucList
                     If IsItemSelectable(i) Then
                         m_Index = i
                         FocusItem m_Index
-                        RaiseEvent IndexChange
+                        RaiseIndexChange
                         Exit For
                     End If
                 Next
@@ -1569,7 +1611,7 @@ Class ucList
                     If IsItemSelectable(i) Then
                         m_Index = i
                         FocusItem m_Index
-                        RaiseEvent IndexChange
+                        RaiseIndexChange
                         Exit For
                     End If
                 Next
@@ -1580,7 +1622,7 @@ Class ucList
                     If IsItemSelectable(i) Then
                         m_Index = i
                         FocusItem m_Index
-                        RaiseEvent IndexChange
+                        RaiseIndexChange
                         Exit For
                     End If
                 Next
@@ -1602,12 +1644,12 @@ Class ucList
                     If m_Index <> -1 Then
                         m_Items(m_Index).Checked = Not m_Items(m_Index).Checked
                         Draw
-                        RaiseEvent ItemClick
+                        RaiseItemClick
                     End If
                 Else
                     If m_Index <> -1 Then
                         If Not isWinChild Then HideList
-                        RaiseEvent ItemClick
+                        RaiseItemClick
 
                         If SrcTextBox <> 0 Then
                             bTimerSkipRoutines = True
@@ -1634,7 +1676,7 @@ Class ucList
                     If IsItemSelectable(i) Then
                         m_Index = i
                         FocusItem m_Index
-                        RaiseEvent IndexChange
+                        RaiseIndexChange
                         Exit For
                     End If
                 Next
@@ -1648,7 +1690,7 @@ Class ucList
                     If IsItemSelectable(i) Then
                         m_Index = i
                         FocusItem m_Index
-                        RaiseEvent IndexChange
+                        RaiseIndexChange
                         Exit For
                     End If
                 Next
@@ -2211,7 +2253,7 @@ Class ucList
                             If UCase$(ChrW$(KeyAscii)) = UCase$(sChar) Then
                                 m_Index = i
                                 HideList
-                                RaiseEvent ItemClick
+                                RaiseItemClick
                                 Exit Sub
                             End If
                         End If
@@ -2230,7 +2272,7 @@ Class ucList
                         m_Index = i
                         FocusItem m_Index
                         Draw
-                        RaiseEvent IndexChange
+                        RaiseIndexChange
                         Exit Sub
                     End If
                 End If
@@ -2244,7 +2286,7 @@ Class ucList
                         m_Index = i
                         FocusItem m_Index
                         Draw
-                        RaiseEvent IndexChange
+                        RaiseIndexChange
                         Exit Sub
                     End If
                 End If
@@ -2267,7 +2309,7 @@ Class ucList
                     m_Index = m_HotItem
                     bMouseDown = True
                     Draw
-                    RaiseEvent IndexChange
+                    RaiseIndexChange
                 Else
                     If m_Items(m_HotItem).SubMenu Is Nothing Then
                         bMouseDown = True
@@ -2367,7 +2409,7 @@ Class ucList
 
                 m_Items(m_Index).Checked = Not m_Items(m_Index).Checked
                 Draw
-                RaiseEvent ItemClick
+                RaiseItemClick
             Else
                 If isWinChild Then
                     Draw
@@ -2377,7 +2419,7 @@ Class ucList
                     End If
                 End If
 
-                RaiseEvent ItemClick
+                RaiseItemClick
 
                 If SrcTextBox <> 0 Then
                     bTimerSkipRoutines = True
@@ -3732,6 +3774,7 @@ Class ucList
         Dim KeyCode As Integer
         Dim bHandled As Boolean
         Dim lRet As LongPtr
+        Dim sBefore As String
 
         On Error Resume Next
 
@@ -3802,9 +3845,18 @@ Class ucList
         ElseIf lhWnd = m_SrcSubclassed And m_SrcSubclassed <> 0 Then
             Select Case uMsg
                 Case WM_CHAR
+                    ' En twinBASIC el TextBox recibe tambien el WM_CHAR del Tab (9), Esc,
+                    ' Ctrl+tecla... (en VB6 el formulario se los quedaba). Si se tratara
+                    ' como un cambio, con la lista cerrada se buscaba de nuevo el texto
+                    ' recien elegido y la lista se abria otra vez en ESTE TextBox (el
+                    ' anterior) justo antes de que el foco pasara al siguiente.
+                    ' Por eso solo se procesa si el texto cambio de verdad.
+                    ' Ademas se ignoran los caracteres de control (salvo Backspace) y los
+                    ' mensajes que llegan cuando este TextBox ya no tiene el foco.
+                    sBefore = TextBox_GetText(lhWnd)
                     zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)   'MSG_AFTER
-                    If CLng(wParam) <> vbKeyReturn Then
-                        SrcTextBox_Change
+                    If (CLng(wParam) >= 32 Or CLng(wParam) = vbKeyBack) And GetFocus() = lhWnd Then
+                        If TextBox_GetText(lhWnd) <> sBefore Then SrcTextBox_Change
                     End If
                     Exit Function
 
