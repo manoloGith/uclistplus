@@ -217,6 +217,22 @@ Module mUcListHelpers
         End If
     End Sub
 
+    ' True si hWnd es una lista desplegable abierta o una ventana hija suya
+    ' (por ejemplo el EDIT del filtro).
+    Public Function UCL_PopupsOwnWindow(ByVal hWnd As LongPtr) As Boolean
+        Dim o As ucList
+        Dim i As Long
+        If hWnd = 0 Then Exit Function
+        For i = m_PopCount - 1 To 0 Step -1
+            Set o = ListFromPtr(m_Pops(i))
+            If Not o Is Nothing Then
+                If o.zzOwnsWindow(hWnd) Then UCL_PopupsOwnWindow = True
+            End If
+            Set o = Nothing
+            If UCL_PopupsOwnWindow Then Exit Function
+        Next
+    End Function
+
     ' Lista desplegable que tiene el "foco logico" del teclado (la ultima abierta)
     Public Function UCL_PopupTop() As LongPtr
         If m_PopCount > 0 Then UCL_PopupTop = m_Pops(m_PopCount - 1)

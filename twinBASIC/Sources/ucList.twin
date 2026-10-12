@@ -53,6 +53,7 @@ Class ucList
     Private Declare PtrSafe Function ReleaseDC Lib "user32" (ByVal hWnd As LongPtr, ByVal hDC As LongPtr) As Long
     Private Declare PtrSafe Function GetFocus Lib "user32" () As LongPtr
     Private Declare PtrSafe Function SetFocusAPI Lib "user32" Alias "SetFocus" (ByVal hWnd As LongPtr) As LongPtr
+    Private Declare PtrSafe Function SetActiveWindow Lib "user32" (ByVal hWnd As LongPtr) As LongPtr
     Private Declare PtrSafe Function SetCapture Lib "user32" (ByVal hWnd As LongPtr) As LongPtr
     Private Declare PtrSafe Function ReleaseCapture Lib "user32" () As Long
     Private Declare PtrSafe Function GetCapture Lib "user32" () As LongPtr
@@ -357,6 +358,7 @@ Class ucList
     Private Const WM_UCL_CHAR       As Long = &H8103&
     Private Const WM_UCL_WHEEL      As Long = &H8104&
     Private Const WM_UCL_EDITCMD    As Long = &H8105&
+    Private Const WM_UCL_FOCUSEDIT  As Long = &H8106&
 
     Private Const EDITCMD_DELETE    As Long = 1
     Private Const EDITCMD_PASTE     As Long = 2
@@ -499,6 +501,7 @@ Class ucList
     Private m_bPopupWnd     As Boolean  'm_hList es emergente
     Private m_hOwner        As LongPtr  'formulario propietario de la emergente
     Private m_hOwnerSub     As LongPtr  'formulario subclasificado mientras esta abierta
+    Private m_hPrevFocus    As LongPtr  'ventana con el foco al abrir la emergente
     Private m_hEdit         As LongPtr  'filtro
     Private m_hUC           As LongPtr  'UserControl.hWnd subclasificado
     Private m_hSrc          As LongPtr  'TextBox de AutoCompleteTextBox
@@ -1637,6 +1640,7 @@ Class ucList
         If Not Ambient.UserMode Then Exit Sub
         If Not UserControl.Enabled Then Exit Sub
         If bShow Then HideList
+        m_hPrevFocus = GetFocus()
 
         EnsureRuntime
         ' La emergente pertenece al formulario actual del control
@@ -1722,6 +1726,12 @@ Class ucList
         If m_hOwner <> 0 And m_hOwnerSub = 0 Then
             If UCL_SubclassList(m_hOwner, ObjPtr(Me)) Then m_hOwnerSub = m_hOwner
         End If
+
+        ' Como el original (PutFocus Text1.hWnd): con filtro y sin TextBox de
+        ' autocompletar, el EDIT recibe el foco para que se vea el cursor.
+        ' Se publica para que ocurra despues del clic que abrio la lista (un
+        ' boton toma el foco al terminar de procesar su WM_LBUTTONDOWN).
+        If m_ShowFilter And m_hEdit <> 0 And m_hSrc = 0 Then PostMessageW m_hList, WM_UCL_FOCUSEDIT, m_ShowGen, 0
     End Sub
 
     Public Sub HideList()
@@ -1753,6 +1763,19 @@ Class ucList
         bTracking = False
         m_HotItem = -1
         sbPressed = SBP_NONE
+
+        ' Si el foco esta dentro de la emergente (filtro), se devuelve a la
+        ' ventana que lo tenia al abrirla (o al formulario).
+        If m_hList <> 0 Then
+            If zzOwnsWindow(GetFocus()) Then
+                If m_hPrevFocus <> 0 And IsWindow(m_hPrevFocus) <> 0 Then
+                    SetFocusAPI m_hPrevFocus
+                ElseIf m_hOwner <> 0 And IsWindow(m_hOwner) <> 0 Then
+                    SetActiveWindow m_hOwner
+                End If
+            End If
+        End If
+        m_hPrevFocus = 0
 
         cShadow.HideBorders
         If m_hList <> 0 Then ShowWindow m_hList, SW_HIDE
@@ -1839,8 +1862,11 @@ Class ucList
 
         Select Case vk
             Case vbKeyTab
-                ' Tab cierra la lista y SIGUE su camino (el foco pasa al siguiente control)
+                ' Tab cierra la lista y SIGUE su camino (el foco pasa al siguiente
+                ' control). Si el foco esta en el filtro de la emergente, la tecla
+                ' se consume: al cerrar, el foco vuelve a donde estaba.
                 If bAction And Not bUp Then PostMessageW m_hList, WM_UCL_KEY, vk, ShiftState()
+                If zzOwnsWindow(GetFocus()) Then zzHookKey = True
                 Exit Function
 
             Case vbKeyUp, vbKeyDown, vbKeyHome, vbKeyEnd, vbKeyPageUp, vbKeyPageDown, _
@@ -3636,6 +3662,16 @@ Fail:
                     Exit Function
                 End If
 
+            Case WM_ACTIVATE
+                ' La emergente se activa al dar el foco al filtro. Si pierde la
+                ' activacion en favor de otra ventana (Alt+Tab, otra aplicacion,
+                ' el formulario), se cierra.
+                ' Volver al formulario propio no cierra (los clics fuera ya los
+                ' detecta el gancho de raton).
+                If m_bPopupWnd And (CLng(wParam) And &HFFFF&) = 0 Then
+                    If lParam <> m_hOwner And Not UCL_PopupsOwnWindow(lParam) Then zzRequestClose
+                End If
+
             Case WM_SETCURSOR
                 If CLng(lParam And &HFFFF&) = HTCLIENT Then
                     If SetCursorFromPointer() Then
@@ -3810,6 +3846,10 @@ Fail:
                 End If
                 Exit Function
 
+            Case WM_UCL_FOCUSEDIT
+                If bShow And CLng(wParam) = m_ShowGen And m_hEdit <> 0 Then SetFocusAPI m_hEdit
+                Exit Function
+
             Case WM_UCL_WHEEL
                 OnMouseWheel CLng(wParam)
                 Exit Function
@@ -3921,7 +3961,7 @@ Fail:
 
             Case WM_KILLFOCUS
                 ' El foco salio del TextBox (Tab, clic en otro control...): cerrar
-                If bShow Then zzRequestClose
+                If bShow And Not UCL_PopupsOwnWindow(wParam) Then zzRequestClose
 
             Case WM_NCDESTROY
                 SrcProc = UCL_DefProc(hWnd, uMsg, wParam, lParam)
@@ -3937,7 +3977,11 @@ Fail:
         Dim lFlags As Long
         Select Case uMsg
             Case WM_ACTIVATE
-                If (CLng(wParam) And &HFFFF&) = 0 Then zzRequestClose      'WA_INACTIVE
+                ' WA_INACTIVE: se cierra salvo que se active una de nuestras
+                ' emergentes (clic en el filtro, que toma el foco)
+                If (CLng(wParam) And &HFFFF&) = 0 Then
+                    If Not UCL_PopupsOwnWindow(lParam) Then zzRequestClose
+                End If
             Case WM_WINDOWPOSCHANGED
                 ' WINDOWPOS: hwnd, hwndInsertAfter, x, y, cx, cy, flags
                 If lParam <> 0 Then
