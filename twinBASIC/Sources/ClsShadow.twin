@@ -1,26 +1,89 @@
+[Description("Sombra y borde redondeado alrededor de una ventana")]
 Class ClsShadow
-    '-----------------------------------------------
-    'Name: ClsShadow
-    'Autor: Leandro Ascierto
-    'Web: www.leandroascierto.com
-    'Date: 20/06/2021
-    'Conversion a twinBASIC (32/64 bits): subclasificacion con SetWindowSubclass.
-    '-----------------------------------------------
+
+    '==========================================================================
+    ' ClsShadow (twinBASIC, 32/64 bits) - reescrito desde cero.
+    ' Misma interfaz publica que el ClsShadow de ucListPlus (Leandro Ascierto).
+    '
+    ' ShowBorders hWnd, isWinChild
+    '  - isWinChild = False (ventana de nivel superior / popup): ventana capa
+    '    (WS_EX_LAYERED) con alfa por pixel, transparente al raton, colocada
+    '    justo debajo de la ventana destino.
+    '  - isWinChild = True (control dentro de un formulario): ventana hija del
+    '    mismo padre, debajo del control en el orden Z, con una region que
+    '    excluye al control (nunca pinta encima de el) y transparente al raton.
+    ' La sombra sigue a la ventana destino (WM_WINDOWPOSCHANGED): se mueve,
+    ' cambia de tamano, se oculta y se muestra con ella. Solo vuelve a
+    ' aparecer si se llamo a ShowBorders y no a HideBorders.
+    '==========================================================================
 
     Option Explicit
 
-    Private Type GDIPlusStartupInput
-        GdiPlusVersion                      As Long
-        DebugEventCallback                  As LongPtr
-        SuppressBackgroundThread            As Long
-        SuppressExternalCodecs              As Long
-    End Type
+    Private Declare PtrSafe Function CreateWindowExW Lib "user32" (ByVal dwExStyle As Long, ByVal lpClassName As LongPtr, ByVal lpWindowName As LongPtr, ByVal dwStyle As Long, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hWndParent As LongPtr, ByVal hMenu As LongPtr, ByVal hInstance As LongPtr, ByVal lpParam As LongPtr) As LongPtr
+    Private Declare PtrSafe Function DestroyWindow Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function IsWindow Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function IsWindowVisible Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function ShowWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal nCmdShow As Long) As Long
+    Private Declare PtrSafe Function SetWindowPos Lib "user32" (ByVal hWnd As LongPtr, ByVal hWndInsertAfter As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, ByVal wFlags As Long) As Long
+    Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
+    Private Declare PtrSafe Function GetParent Lib "user32" (ByVal hWnd As LongPtr) As LongPtr
+    Private Declare PtrSafe Function GetWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal uCmd As Long) As LongPtr
+    Private Declare PtrSafe Function MapWindowPoints Lib "user32" (ByVal hWndFrom As LongPtr, ByVal hWndTo As LongPtr, ByRef lppt As RECT, ByVal cPoints As Long) As Long
+    #If Win64 Then
+    Private Declare PtrSafe Function GetWindowLongPtrW Lib "user32" (ByVal hWnd As LongPtr, ByVal nIndex As Long) As LongPtr
+    #Else
+    Private Declare PtrSafe Function GetWindowLongPtrW Lib "user32" Alias "GetWindowLongW" (ByVal hWnd As LongPtr, ByVal nIndex As Long) As LongPtr
+    #End If
+    Private Declare PtrSafe Function GetWindowRgn Lib "user32" (ByVal hWnd As LongPtr, ByVal hRgn As LongPtr) As Long
+    Private Declare PtrSafe Function SetWindowRgn Lib "user32" (ByVal hWnd As LongPtr, ByVal hRgn As LongPtr, ByVal bRedraw As Long) As Long
+    Private Declare PtrSafe Function InvalidateRect Lib "user32" (ByVal hWnd As LongPtr, ByVal lpRect As LongPtr, ByVal bErase As Long) As Long
+    Private Declare PtrSafe Function UpdateLayeredWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal hdcDst As LongPtr, ByRef pptDst As POINTAPI, ByRef psize As SIZEAPI, ByVal hdcSrc As LongPtr, ByRef pptSrc As POINTAPI, ByVal crKey As Long, ByRef pblend As BLENDFUNCTION, ByVal dwFlags As Long) As Long
+    Private Declare PtrSafe Function BeginPaint Lib "user32" (ByVal hWnd As LongPtr, ByRef lpPaint As PAINTSTRUCT) As LongPtr
+    Private Declare PtrSafe Function EndPaint Lib "user32" (ByVal hWnd As LongPtr, ByRef lpPaint As PAINTSTRUCT) As Long
+    Private Declare PtrSafe Function GetDC Lib "user32" (ByVal hWnd As LongPtr) As LongPtr
+    Private Declare PtrSafe Function ReleaseDC Lib "user32" (ByVal hWnd As LongPtr, ByVal hDC As LongPtr) As Long
+    Private Declare PtrSafe Function GetSysColor Lib "user32" (ByVal nIndex As Long) As Long
+    Private Declare PtrSafe Function FillRect Lib "user32" (ByVal hDC As LongPtr, ByRef lpRect As RECT, ByVal hBrush As LongPtr) As Long
+    Private Declare PtrSafe Function CreateSolidBrush Lib "gdi32" (ByVal crColor As Long) As LongPtr
+    Private Declare PtrSafe Function CreateCompatibleDC Lib "gdi32" (ByVal hDC As LongPtr) As LongPtr
+    Private Declare PtrSafe Function CreateDIBSection Lib "gdi32" (ByVal hDC As LongPtr, ByRef pbmi As BITMAPINFOHEADER, ByVal iUsage As Long, ByRef ppvBits As LongPtr, ByVal hSection As LongPtr, ByVal dwOffset As Long) As LongPtr
+    Private Declare PtrSafe Function SelectObject Lib "gdi32" (ByVal hDC As LongPtr, ByVal hObject As LongPtr) As LongPtr
+    Private Declare PtrSafe Function DeleteObject Lib "gdi32" (ByVal hObject As LongPtr) As Long
+    Private Declare PtrSafe Function DeleteDC Lib "gdi32" (ByVal hDC As LongPtr) As Long
+    Private Declare PtrSafe Function BitBlt Lib "gdi32" (ByVal hDestDC As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hSrcDC As LongPtr, ByVal xSrc As Long, ByVal ySrc As Long, ByVal dwRop As Long) As Long
+    Private Declare PtrSafe Function GetDeviceCaps Lib "gdi32" (ByVal hDC As LongPtr, ByVal nIndex As Long) As Long
+    Private Declare PtrSafe Function GetBkColor Lib "gdi32" (ByVal hDC As LongPtr) As Long
+    Private Declare PtrSafe Function CreateRectRgn Lib "gdi32" (ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long) As LongPtr
+    Private Declare PtrSafe Function CombineRgn Lib "gdi32" (ByVal hrgnDst As LongPtr, ByVal hrgnSrc1 As LongPtr, ByVal hrgnSrc2 As LongPtr, ByVal iMode As Long) As Long
+    Private Declare PtrSafe Function OffsetRgn Lib "gdi32" (ByVal hRgn As LongPtr, ByVal X As Long, ByVal Y As Long) As Long
+    Private Declare PtrSafe Function DrawThemeParentBackground Lib "uxtheme" (ByVal hWnd As LongPtr, ByVal hDC As LongPtr, ByVal prc As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreateFromHDC Lib "gdiplus" (ByVal hDC As LongPtr, ByRef graphics As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDeleteGraphics Lib "gdiplus" (ByVal graphics As LongPtr) As Long
+    Private Declare PtrSafe Function GdipSetSmoothingMode Lib "gdiplus" (ByVal graphics As LongPtr, ByVal SmoothingMode As Long) As Long
+    Private Declare PtrSafe Function GdipCreatePath Lib "gdiplus" (ByVal brushMode As Long, ByRef path As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDeletePath Lib "gdiplus" (ByVal path As LongPtr) As Long
+    Private Declare PtrSafe Function GdipAddPathArcI Lib "gdiplus" (ByVal path As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal Width As Long, ByVal Height As Long, ByVal startAngle As Single, ByVal sweepAngle As Single) As Long
+    Private Declare PtrSafe Function GdipAddPathRectangleI Lib "gdiplus" (ByVal path As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal Width As Long, ByVal Height As Long) As Long
+    Private Declare PtrSafe Function GdipClosePathFigure Lib "gdiplus" (ByVal path As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreateSolidFill Lib "gdiplus" (ByVal argb As Long, ByRef brush As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDeleteBrush Lib "gdiplus" (ByVal brush As LongPtr) As Long
+    Private Declare PtrSafe Function GdipFillPath Lib "gdiplus" (ByVal graphics As LongPtr, ByVal brush As LongPtr, ByVal path As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreatePen1 Lib "gdiplus" (ByVal argb As Long, ByVal Width As Single, ByVal unit As Long, ByRef pen As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDeletePen Lib "gdiplus" (ByVal pen As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDrawPath Lib "gdiplus" (ByVal graphics As LongPtr, ByVal pen As LongPtr, ByVal path As LongPtr) As Long
+    Private Declare PtrSafe Function GdipSetClipPath Lib "gdiplus" (ByVal graphics As LongPtr, ByVal path As LongPtr, ByVal combineMode As Long) As Long
+    Private Declare PtrSafe Function GdipSetClipHrgn Lib "gdiplus" (ByVal graphics As LongPtr, ByVal hRgn As LongPtr, ByVal combineMode As Long) As Long
+    Private Declare PtrSafe Function GdipResetClip Lib "gdiplus" (ByVal graphics As LongPtr) As Long
+    Private Declare PtrSafe Function GdipCreateBitmapFromHBITMAP Lib "gdiplus" (ByVal hbm As LongPtr, ByVal hpal As LongPtr, ByRef bitmap As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDrawImageRectRectI Lib "gdiplus" (ByVal graphics As LongPtr, ByVal image As LongPtr, ByVal dstx As Long, ByVal dsty As Long, ByVal dstwidth As Long, ByVal dstheight As Long, ByVal srcx As Long, ByVal srcy As Long, ByVal srcwidth As Long, ByVal srcheight As Long, ByVal srcUnit As Long, ByVal imageAttributes As LongPtr, ByVal callback As LongPtr, ByVal callbackData As LongPtr) As Long
+    Private Declare PtrSafe Function GdipDisposeImage Lib "gdiplus" (ByVal image As LongPtr) As Long
+    Private Declare PtrSafe Sub CopyMemoryAny Lib "kernel32" Alias "RtlMoveMemory" (ByRef Destination As Any, ByVal Source As LongPtr, ByVal Length As LongPtr)
 
     Private Type RECT
-        Left As Long
-        Top As Long
-        Right As Long
-        Bottom As Long
+        Left    As Long
+        Top     As Long
+        Right   As Long
+        Bottom  As Long
     End Type
 
     Private Type POINTAPI
@@ -28,143 +91,80 @@ Class ClsShadow
         Y As Long
     End Type
 
-    Private Type RECTL
-        Left As Long
-        Top As Long
-        Width As Long
-        Height As Long
-    End Type
-
-    Private Type BitmapData
-        Width                       As Long
-        Height                      As Long
-        stride                      As Long
-        PixelFormat                 As Long
-        Scan0Ptr                    As LongPtr
-        ReservedPtr                 As LongPtr
-    End Type
-
     Private Type SIZEAPI
-        cx                       As Long
-        cy                       As Long
-    End Type
-
-    Private Type BITMAPINFOHEADER
-        biSize                   As Long
-        biWidth                  As Long
-        biHeight                 As Long
-        biPlanes                 As Integer
-        biBitCount               As Integer
-        biCompression            As Long
-        biSizeImage              As Long
-        biXPelsPerMeter          As Long
-        biYPelsPerMeter          As Long
-        biClrUsed                As Long
-        biClrImportant           As Long
-    End Type
-
-    Private Type BITMAPINFO
-        bmiHeader                As BITMAPINFOHEADER
-        bmiColors(3)             As Byte
+        cx As Long
+        cy As Long
     End Type
 
     Private Type BLENDFUNCTION
-        BlendOp                  As Byte
-        BlendFlags               As Byte
-        SourceConstantAlpha      As Byte
-        AlphaFormat              As Byte
+        BlendOp             As Byte
+        BlendFlags          As Byte
+        SourceConstantAlpha As Byte
+        AlphaFormat         As Byte
     End Type
 
-    Private Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (ByRef Destination As Any, ByRef Source As Any, ByVal Length As LongPtr)
-    Private Declare PtrSafe Sub FillMemory Lib "kernel32" Alias "RtlFillMemory" (ByRef Destination As Any, ByVal Length As LongPtr, ByVal Fill As Byte)
-    Private Declare PtrSafe Function GetSysColor Lib "user32" (ByVal nIndex As Long) As Long
-    Private Declare PtrSafe Function ShowWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal nCmdShow As Long) As Long
-    Private Declare PtrSafe Function UpdateLayeredWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal hdcDst As LongPtr, ByVal pptDst As LongPtr, ByRef psize As SIZEAPI, ByVal hdcSrc As LongPtr, ByRef pptSrc As POINTAPI, ByVal crKey As Long, ByRef pblend As BLENDFUNCTION, ByVal dwFlags As Long) As Long
-    Private Declare PtrSafe Function GetWindowRgn Lib "user32" (ByVal hWnd As LongPtr, ByVal hRgn As LongPtr) As Long
-    Private Declare PtrSafe Function ScreenToClient Lib "user32" (ByVal hWnd As LongPtr, ByRef lpPoint As POINTAPI) As Long
-    Private Declare PtrSafe Function ClientToScreen Lib "user32" (ByVal hWnd As LongPtr, ByRef lpPoint As POINTAPI) As Long
-    Private Declare PtrSafe Function GetParent Lib "user32" (ByVal hWnd As LongPtr) As LongPtr
-    Private Declare PtrSafe Function SetParent Lib "user32" (ByVal hWndChild As LongPtr, ByVal hWndNewParent As LongPtr) As LongPtr
-    Private Declare PtrSafe Function FillRect Lib "user32" (ByVal hDC As LongPtr, ByRef lpRect As RECT, ByVal hBrush As LongPtr) As Long
-    Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
-    Private Declare PtrSafe Function SetWindowPos Lib "user32" (ByVal hWnd As LongPtr, ByVal hWndInsertAfter As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, ByVal wFlags As Long) As Long
-    Private Declare PtrSafe Function CreateWindowExW Lib "user32" (ByVal dwExStyle As Long, ByVal lpClassName As LongPtr, ByVal lpWindowName As LongPtr, ByVal dwStyle As Long, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hWndParent As LongPtr, ByVal hMenu As LongPtr, ByVal hInstance As LongPtr, ByVal lpParam As LongPtr) As LongPtr
-    Private Declare PtrSafe Function DestroyWindow Lib "user32" (ByVal hWnd As LongPtr) As Long
-    #If Win64 Then
-    Private Declare PtrSafe Function SetWindowLongPtrW Lib "user32" (ByVal hWnd As LongPtr, ByVal nIndex As Long, ByVal dwNewLong As LongPtr) As LongPtr
-    #Else
-    Private Declare PtrSafe Function SetWindowLongPtrW Lib "user32" Alias "SetWindowLongW" (ByVal hWnd As LongPtr, ByVal nIndex As Long, ByVal dwNewLong As LongPtr) As LongPtr
-    #End If
-    Private Declare PtrSafe Function SetRect Lib "user32" (ByRef lpRect As Any, ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long) As Long
-    Private Declare PtrSafe Function GetDC Lib "user32" (ByVal hWnd As LongPtr) As LongPtr
-    Private Declare PtrSafe Function ReleaseDC Lib "user32" (ByVal hWnd As LongPtr, ByVal hDC As LongPtr) As Long
-    Private Declare PtrSafe Function CreateDIBSection Lib "gdi32" (ByVal hDC As LongPtr, ByRef pBitmapInfo As BITMAPINFO, ByVal un As Long, ByRef lplpVoid As LongPtr, ByVal handle As LongPtr, ByVal dw As Long) As LongPtr
-    Private Declare PtrSafe Function GetDeviceCaps Lib "gdi32" (ByVal hDC As LongPtr, ByVal nIndex As Long) As Long
-    Private Declare PtrSafe Function CreateCompatibleDC Lib "gdi32" (ByVal hDC As LongPtr) As LongPtr
-    Private Declare PtrSafe Function SelectObject Lib "gdi32" (ByVal hDC As LongPtr, ByVal hObject As LongPtr) As LongPtr
-    Private Declare PtrSafe Function DeleteDC Lib "gdi32" (ByVal hDC As LongPtr) As Long
-    Private Declare PtrSafe Function DeleteObject Lib "gdi32" (ByVal hObject As LongPtr) As Long
-    Private Declare PtrSafe Function CreateSolidBrush Lib "gdi32" (ByVal crColor As Long) As LongPtr
-    Private Declare PtrSafe Function BitBlt Lib "gdi32" (ByVal hDestDC As LongPtr, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hSrcDC As LongPtr, ByVal xSrc As Long, ByVal ySrc As Long, ByVal dwRop As Long) As Long
-    Private Declare PtrSafe Function OffsetRgn Lib "gdi32" (ByVal hRgn As LongPtr, ByVal X As Long, ByVal Y As Long) As Long
-    Private Declare PtrSafe Function CreateRectRgn Lib "gdi32" (ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long) As LongPtr
-    Private Declare PtrSafe Function GetBkColor Lib "gdi32" (ByVal hDC As LongPtr) As Long
-    Private Declare PtrSafe Sub GdiplusShutdown Lib "gdiplus" (ByVal token As LongPtr)
-    Private Declare PtrSafe Function GdiplusStartup Lib "gdiplus" (ByRef token As LongPtr, ByRef inputbuf As GDIPlusStartupInput, ByVal outputbuf As LongPtr) As Long
-    Private Declare PtrSafe Function GdipDisposeImage Lib "gdiplus" (ByVal Image As LongPtr) As Long
-    Private Declare PtrSafe Function GdipCreateFromHDC Lib "gdiplus" (ByVal hDC As LongPtr, ByRef hGraphics As LongPtr) As Long
-    Private Declare PtrSafe Function GdipDeleteGraphics Lib "gdiplus" (ByVal hGraphics As LongPtr) As Long
-    Private Declare PtrSafe Function GdipDrawImageRectRectI Lib "gdiplus" (ByVal hGraphics As LongPtr, ByVal hImage As LongPtr, ByVal DstX As Long, ByVal DstY As Long, ByVal DstWidth As Long, ByVal DstHeight As Long, ByVal SrcX As Long, ByVal SrcY As Long, ByVal SrcWidth As Long, ByVal SrcHeight As Long, ByVal srcUnit As Long, Optional ByVal imageAttributes As LongPtr = 0, Optional ByVal Callback As LongPtr = 0, Optional ByVal callbackData As LongPtr = 0) As Long
-    Private Declare PtrSafe Function GdipSetSmoothingMode Lib "gdiplus" (ByVal graphics As LongPtr, ByVal SmoothingMd As Long) As Long
-    Private Declare PtrSafe Function GdipCreateSolidFill Lib "gdiplus" (ByVal argb As Long, ByRef Brush As LongPtr) As Long
-    Private Declare PtrSafe Function GdipDeleteBrush Lib "gdiplus" (ByVal Brush As LongPtr) As Long
-    Private Declare PtrSafe Function GdipCreatePen1 Lib "gdiplus" (ByVal mColor As Long, ByVal mWidth As Single, ByVal mUnit As Long, ByRef mPen As LongPtr) As Long
-    Private Declare PtrSafe Function GdipCreatePath Lib "gdiplus" (ByVal mBrushMode As Long, ByRef mPath As LongPtr) As Long
-    Private Declare PtrSafe Function GdipDeletePath Lib "gdiplus" (ByVal mPath As LongPtr) As Long
-    Private Declare PtrSafe Function GdipDrawPath Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mPen As LongPtr, ByVal mPath As LongPtr) As Long
-    Private Declare PtrSafe Function GdipFillPath Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mBrush As LongPtr, ByVal mPath As LongPtr) As Long
-    Private Declare PtrSafe Function GdipAddPathArcI Lib "gdiplus" (ByVal mPath As LongPtr, ByVal mX As Long, ByVal mY As Long, ByVal mWidth As Long, ByVal mHeight As Long, ByVal mStartAngle As Single, ByVal mSweepAngle As Single) As Long
-    Private Declare PtrSafe Function GdipDeletePen Lib "gdiplus" (ByVal mPen As LongPtr) As Long
-    Private Declare PtrSafe Function GdipBitmapUnlockBits Lib "gdiplus" (ByVal mBitmap As LongPtr, ByRef mLockedBitmapData As BitmapData) As Long
-    Private Declare PtrSafe Function GdipBitmapLockBits Lib "gdiplus" (ByVal mBitmap As LongPtr, ByRef mRect As RECTL, ByVal mFlags As Long, ByVal mPixelFormat As Long, ByRef mLockedBitmapData As BitmapData) As Long
-    Private Declare PtrSafe Function GdipGetImageHeight Lib "gdiplus" (ByVal mImage As LongPtr, ByRef mHeight As Long) As Long
-    Private Declare PtrSafe Function GdipGetImageWidth Lib "gdiplus" (ByVal mImage As LongPtr, ByRef mWidth As Long) As Long
-    Private Declare PtrSafe Function GdipCreateBitmapFromScan0 Lib "gdiplus" (ByVal mWidth As Long, ByVal mHeight As Long, ByVal mStride As Long, ByVal mPixelFormat As Long, ByVal mScan0 As LongPtr, ByRef mBitmap As LongPtr) As Long
-    Private Declare PtrSafe Function GdipGetImageGraphicsContext Lib "gdiplus" (ByVal Image As LongPtr, ByRef hGraphics As LongPtr) As Long
-    Private Declare PtrSafe Function GdipClosePathFigure Lib "gdiplus" (ByVal mPath As LongPtr) As Long
-    Private Declare PtrSafe Function GdipCreateBitmapFromHBITMAP Lib "gdiplus" (ByVal mHbm As LongPtr, ByVal mhPal As LongPtr, ByRef mBitmap As LongPtr) As Long
-    Private Declare PtrSafe Function GdipResetClip Lib "gdiplus" (ByVal mGraphics As LongPtr) As Long
-    Private Declare PtrSafe Function GdipSetClipPath Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mPath As LongPtr, ByVal mCombineMode As Long) As Long
-    Private Declare PtrSafe Function GdipAddPathRectangleI Lib "gdiplus" (ByVal mPath As LongPtr, ByVal mX As Long, ByVal mY As Long, ByVal mWidth As Long, ByVal mHeight As Long) As Long
-    Private Declare PtrSafe Function GdipSetClipHrgn Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mHRgn As LongPtr, ByVal mCombineMode As Long) As Long
+    Private Type BITMAPINFOHEADER
+        biSize          As Long
+        biWidth         As Long
+        biHeight        As Long
+        biPlanes        As Integer
+        biBitCount      As Integer
+        biCompression   As Long
+        biSizeImage     As Long
+        biXPelsPerMeter As Long
+        biYPelsPerMeter As Long
+        biClrUsed       As Long
+        biClrImportant  As Long
+    End Type
 
-    Private Const ImageLockModeRead         As Long = &H1
-    Private Const ImageLockModeWrite        As Long = &H2
-    Private Const ImageLockModeUserInputBuf As Long = &H4
+    Private Type PAINTSTRUCT
+        hDC         As LongPtr
+        fErase      As Long
+        rcPaint     As RECT
+        fRestore    As Long
+        fIncUpdate  As Long
+        rgbReserved(31) As Byte
+    End Type
 
-    Private Const WS_EX_LAYERED     As Long = &H80000
     Private Const WS_POPUP          As Long = &H80000000
-    Private Const WS_EX_TOOLWINDOW  As Long = &H80&
     Private Const WS_CHILD          As Long = &H40000000
-    Private Const WM_PAINT          As Long = &HF&
-    Private Const WM_MOVE           As Long = &H3
-    Private Const WM_DESTROY        As Long = &H2
-    Private Const WM_NCDESTROY      As Long = &H82
-    Private Const GWL_STYLE         As Long = -16
-    Private Const GWL_HWNDPARENT    As Long = -8
+    Private Const WS_CLIPSIBLINGS   As Long = &H4000000
+    Private Const WS_EX_LAYERED     As Long = &H80000
+    Private Const WS_EX_TRANSPARENT As Long = &H20&
+    Private Const WS_EX_TOOLWINDOW  As Long = &H80&
+    Private Const WS_EX_NOACTIVATE  As Long = &H8000000
+    Private Const WS_EX_TOPMOST     As Long = &H8&
+    Private Const GWL_EXSTYLE       As Long = -20
+    Private Const GW_OWNER          As Long = 4
+    Private Const SW_HIDE           As Long = 0
+    Private Const SWP_NOSIZE        As Long = &H1
+    Private Const SWP_NOMOVE        As Long = &H2
+    Private Const SWP_NOZORDER      As Long = &H4
     Private Const SWP_NOACTIVATE    As Long = &H10
     Private Const SWP_SHOWWINDOW    As Long = &H40
-    Private Const SWP_NOSIZE        As Long = &H1
-    Private Const LOGPIXELSX        As Long = 88
+    Private Const SWP_HIDEWINDOW    As Long = &H80
+    Private Const HWND_TOPMOST      As LongPtr = -1
+    Private Const WM_DESTROY        As Long = &H2
+    Private Const WM_PAINT          As Long = &HF
+    Private Const WM_ERASEBKGND     As Long = &H14
+    Private Const WM_NCHITTEST      As Long = &H84
+    Private Const WM_MOUSEACTIVATE  As Long = &H21
+    Private Const WM_WINDOWPOSCHANGED As Long = &H47
+    Private Const WM_NCDESTROY      As Long = &H82
+    Private Const HTTRANSPARENT     As Long = -1
+    Private Const MA_NOACTIVATE     As Long = 3
     Private Const ULW_ALPHA         As Long = &H2
-    Private Const DIB_RGB_COLORS    As Long = 0&
     Private Const AC_SRC_ALPHA      As Long = &H1
-    Private Const CombineModeXor    As Long = &H3
-    Private Const CombineModeIntersect      As Long = &H1
-    Private Const PixelFormat32bppPARGB     As Long = &HE200B
-    Private Const SmoothingModeAntiAlias    As Long = 4
+    Private Const RGN_DIFF          As Long = 4
+    Private Const ERROR_RGN         As Long = 0
+    Private Const LOGPIXELSX        As Long = 88
     Private Const CLR_NONE          As Long = &HFFFFFFFF
+    Private Const SmoothingModeAntiAlias As Long = 4
+    Private Const CombineModeExclude As Long = 4
+    Private Const CombineModeIntersect As Long = 1
+    Private Const UnitPixel         As Long = 2
 
+    ' Propiedades
     Private m_Margin            As Integer
     Private m_BackColor         As OLE_COLOR
     Private m_BackColorOpacity  As Integer
@@ -178,32 +178,29 @@ Class ClsShadow
     Private m_ShadowOffsetY     As Integer
     Private m_BorderRadius      As Long
     Private m_ContainerBkColor  As Long
-    Private nSize               As Long
-    Private hImgShadow          As LongPtr
-    Private lWidth              As Long
-    Private lHeight             As Long
-    Private GdipToken           As LongPtr
-    Private m_hwnd              As LongPtr
-    Private hParent             As LongPtr
-    Private c_lhDC              As LongPtr
-    Private c_lDIB              As LongPtr
-    Private m_Pointer           As LongPtr
-    Private m_OldBmp            As LongPtr
-    Private DpiFactor           As Single
-    Private tWinSize            As SIZEAPI
-    Private tBLENDFUNCTION      As BLENDFUNCTION
-    Private bRecreateShadow     As Boolean
-    Private m_isWinChild        As Boolean
-    Private hWinShadow          As LongPtr
-    Private m_SubclassedShadow  As LongPtr   'hWnd de la sombra subclasificada (modo hijo)
-    Private m_SubclassedOwner   As LongPtr   'hWnd del propietario subclasificado (modo popup)
 
+    ' Estado
+    Private m_hTarget       As LongPtr  'ventana a la que se pone sombra
+    Private m_hShadow       As LongPtr  'ventana de la sombra
+    Private m_bChild        As Boolean
+    Private m_bShown        As Boolean  'ShowBorders llamado (y no HideBorders)
+    Private m_bInPos        As Boolean  'evita reentradas al recolocar
+    Private m_Dpi           As Single
+    Private m_rcShadow      As RECT     'posicion de la sombra (pantalla o cliente del padre)
+    Private m_dx            As Long     'origen de la ventana destino dentro de la sombra
+    Private m_dy            As Long
+    Private m_tW            As Long     'tamano de la ventana destino
+    Private m_tH            As Long
+
+    '==========================================================================
+    ' Propiedades publicas
+    '==========================================================================
     Public Property Let ContainerBkColor(ByVal new_value As Long)
         m_ContainerBkColor = new_value
     End Property
 
     Public Property Get hWnd() As LongPtr
-        hWnd = hWinShadow
+        hWnd = m_hShadow
     End Property
 
     Public Property Get Margin() As Integer
@@ -252,7 +249,6 @@ Class ClsShadow
 
     Public Property Let ShadowColor(ByVal new_value As OLE_COLOR)
         m_ShadowColor = new_value
-        bRecreateShadow = True
     End Property
 
     Public Property Get ShadowOpacity() As Integer
@@ -261,7 +257,6 @@ Class ClsShadow
 
     Public Property Let ShadowOpacity(ByVal new_value As Integer)
         m_ShadowOpacity = new_value
-        bRecreateShadow = True
     End Property
 
     Public Property Get BorderWidth() As Integer
@@ -278,7 +273,6 @@ Class ClsShadow
 
     Public Property Let ShadowSize(ByVal new_value As Integer)
         m_ShadowSize = new_value
-        bRecreateShadow = True
     End Property
 
     Public Property Get ShadowOffsetX() As Integer
@@ -303,259 +297,70 @@ Class ClsShadow
 
     Public Property Let BorderRadius(ByVal new_value As Long)
         m_BorderRadius = new_value
-        bRecreateShadow = True
     End Property
 
-    Public Sub DrawBitmap(ByVal hBmp As LongPtr, ByVal lhWnd As LongPtr, ByVal Width As Long, ByVal Height As Long)
-        Dim tSize As SIZEAPI
-        Dim PT As POINTAPI
-        Dim hGraphics As LongPtr
-        Dim hImage As LongPtr
-        Dim X As Long, Y As Long
-        Dim hRgn As LongPtr
+    '==========================================================================
+    ' Metodos publicos
+    '==========================================================================
 
-        If c_lhDC = 0 Then Exit Sub
-
-        X = (m_ShadowSize * 2 + m_BorderWidth) * DpiFactor
-        Y = (m_ShadowSize * 2 + m_BorderWidth) * DpiFactor
-
-        If m_ShadowOffsetX < 0 Then X = X - m_ShadowOffsetX * DpiFactor
-        If m_ShadowOffsetY < 0 Then Y = Y - m_ShadowOffsetY * DpiFactor
-
-        If X <= 0 Then X = 0
-        If Y < 0 Then Y = 0
-
-        hRgn = CreateRectRgn(0, 0, Width, Height)
-        GetWindowRgn lhWnd, hRgn
-        OffsetRgn hRgn, X, Y
-
-        GdipCreateFromHDC c_lhDC, hGraphics
-
-        Call GdipSetClipHrgn(hGraphics, hRgn, CombineModeIntersect)
-
-        GdipCreateBitmapFromHBITMAP hBmp, 0, hImage
-        GdipDrawImageRectRectI hGraphics, hImage, X, Y, Width, Height, 0, 0, Width, Height, &H2, 0, 0, 0
-        GdipDisposeImage hImage
-        GdipDeleteGraphics hGraphics
-
-        DeleteObject hRgn
-
-        tSize.cx = lWidth
-        tSize.cy = lHeight
-
-        Call UpdateLayeredWindow(hWinShadow, 0, 0, tSize, c_lhDC, PT, 0&, tBLENDFUNCTION, ULW_ALPHA)
-    End Sub
-
-    Public Sub Refresh()
-        If m_hwnd <> 0 Then ShowBorders m_hwnd, m_isWinChild
-    End Sub
-
-    Public Sub ShowBorders(ByVal lhWnd As LongPtr, ByVal isWinChild As Boolean)
-        Dim R As RECT, PT As POINTAPI
-        Dim Left As Long, Top As Long
-        Dim TotMargin As Long
-
-        TotMargin = (m_ShadowSize * 2 + m_BorderWidth + m_Margin) * DpiFactor
-
-        GetWindowRect lhWnd, R
-        tWinSize.cx = R.Right - R.Left
-        tWinSize.cy = R.Bottom - R.Top
-        lWidth = tWinSize.cx + TotMargin * 2 + Abs(m_ShadowOffsetX) * DpiFactor
-        lHeight = tWinSize.cy + TotMargin * 2 + Abs(m_ShadowOffsetY) * DpiFactor
-
-        If m_hwnd = 0 Then
-            m_hwnd = lhWnd
-            hParent = GetParent(lhWnd)
-            If isWinChild Then
-                m_isWinChild = True
-                hWinShadow = CreateWindowExW(0, StrPtr("static"), 0, 0, 0&, 0&, 0&, 0&, hParent, 0, App.hInstance, 0)
-                Call SetWindowLongPtrW(hWinShadow, GWL_STYLE, WS_CHILD)
-                SetParent hWinShadow, hParent
-
-                If UCL_SubclassShadow(hWinShadow, ObjPtr(Me), ObjPtr(Me)) Then m_SubclassedShadow = hWinShadow
-            Else
-                hWinShadow = CreateWindowExW(WS_EX_TOOLWINDOW Or WS_EX_LAYERED, StrPtr("static"), 0, WS_POPUP, 0&, 0&, 0&, 0&, 0, 0, App.hInstance, 0)
-                If UCL_SubclassShadow(m_hwnd, ObjPtr(Me), ObjPtr(Me)) Then m_SubclassedOwner = m_hwnd
-            End If
+    ' Muestra (o reposiciona y redibuja) la sombra de hWnd.
+    Public Sub ShowBorders(ByVal hWnd As LongPtr, ByVal isWinChild As Boolean)
+        If hWnd = 0 Then Exit Sub
+        If IsWindow(hWnd) = 0 Then Exit Sub
+        If hWnd <> m_hTarget Or isWinChild <> m_bChild Or m_hShadow = 0 Then
+            Detach
+            If Not Attach(hWnd, isWinChild) Then Exit Sub
         End If
-
-        If isWinChild Then
-            ScreenToClient hParent, PT
-            ClientToScreen lhWnd, PT
-            R.Left = PT.X
-            R.Top = PT.Y
-        End If
-
-        If bRecreateShadow Then
-            Call CreateShadow
-            bRecreateShadow = False
-        End If
-
-        Left = R.Left - TotMargin
-        Top = R.Top - TotMargin
-        If m_ShadowOffsetX < 0 Then Left = Left + m_ShadowOffsetX * DpiFactor
-        If m_ShadowOffsetY < 0 Then Top = Top + m_ShadowOffsetY * DpiFactor
-
-        SetWindowPos hWinShadow, lhWnd, Left, Top, lWidth, lHeight, SWP_NOACTIVATE Or SWP_SHOWWINDOW
-        If Not isWinChild Then SetWindowLongPtrW lhWnd, GWL_HWNDPARENT, hWinShadow
-
-        Update
+        m_bShown = True
+        Reposition True
     End Sub
 
     Public Sub HideBorders()
-        If hWinShadow Then ShowWindow hWinShadow, 0
-        pvCleanUp
+        m_bShown = False
+        If m_hShadow <> 0 Then ShowWindow m_hShadow, SW_HIDE
     End Sub
 
-    Private Function pvCreateDIB() As Boolean
-        Dim tBITMAPINFO     As BITMAPINFO
+    ' Vuelve a calcular y dibujar la sombra. No la muestra si esta oculta.
+    Public Sub Refresh()
+        If m_bShown And m_hTarget <> 0 Then Reposition True
+    End Sub
 
-        pvCleanUp
+    ' Redibuja el contenido de la sombra en su posicion actual.
+    Public Sub Update()
+        If m_hShadow = 0 Then Exit Sub
+        If m_bChild Then
+            InvalidateRect m_hShadow, 0, 0
+        Else
+            RenderLayered 0, 0, 0, 0
+        End If
+    End Sub
 
-        With tBITMAPINFO.bmiHeader
-            .biSize = LenB(tBITMAPINFO.bmiHeader)
-            .biBitCount = 32
-            .biHeight = lHeight
-            .biWidth = lWidth
-            .biPlanes = 1
-            .biSizeImage = .biWidth * .biHeight * 4
-        End With
+    ' Pinta hBmp (de Width x Height) en el hueco de la ventana destino. Solo tiene
+    ' efecto con sombras de ventanas de nivel superior (isWinChild = False).
+    Public Sub DrawBitmap(ByVal hBmp As LongPtr, ByVal hWnd As LongPtr, ByVal Width As Long, ByVal Height As Long)
+        If m_hShadow = 0 Or m_bChild Then Exit Sub
+        If hWnd <> m_hTarget Then Exit Sub
+        RenderLayered hBmp, Width, Height, 1
+    End Sub
 
-        c_lhDC = CreateCompatibleDC(0)
-        c_lDIB = CreateDIBSection(c_lhDC, tBITMAPINFO, DIB_RGB_COLORS, m_Pointer, 0, 0&)
-        m_OldBmp = SelectObject(c_lhDC, c_lDIB)
-        pvCreateDIB = c_lDIB <> 0
+    Public Function GetWindowsDPI() As Double
+        Dim hDC As LongPtr, lpx As Long
+        hDC = GetDC(0)
+        lpx = GetDeviceCaps(hDC, LOGPIXELSX)
+        ReleaseDC 0, hDC
+        If lpx = 0 Then
+            GetWindowsDPI = 1#
+        Else
+            GetWindowsDPI = lpx / 96#
+        End If
     End Function
 
-    Private Sub pvCleanUp()
-        If c_lDIB Then Call DeleteObject(SelectObject(c_lhDC, m_OldBmp)): c_lDIB = 0
-        If c_lhDC Then Call DeleteDC(c_lhDC): c_lhDC = 0
-    End Sub
-
-    Public Sub Update()
-        Dim hGraphics As LongPtr
-        Dim tSize As SIZEAPI
-        Dim PT As POINTAPI
-        Dim X As Long, Y As Long
-        Dim hRgn As LongPtr
-        Dim hPath As LongPtr, hBrush As LongPtr, hPen As LongPtr
-        Dim tRc As RECT
-        Dim lDC As LongPtr
-        Dim BkColor As Long
-
-        If hWinShadow = 0 Then Exit Sub
-
-        pvCreateDIB
-
-        If m_isWinChild Then
-            If m_ContainerBkColor = CLR_NONE Then
-                lDC = GetDC(hParent)
-                BkColor = GetBkColor(lDC)
-                ReleaseDC hParent, lDC
-            Else
-                BkColor = m_ContainerBkColor
-                If (BkColor And &H80000000) Then BkColor = GetSysColor(BkColor And &HFF&)
-            End If
-
-            lDC = GetDC(hWinShadow)
-            hBrush = CreateSolidBrush(BkColor)
-            SetRect tRc, 0, 0, lWidth, lHeight
-            FillRect c_lhDC, tRc, hBrush
-            DeleteObject hBrush
-            hBrush = 0
-        End If
-
-        GdipCreateFromHDC c_lhDC, hGraphics
-        GdipSetSmoothingMode hGraphics, SmoothingModeAntiAlias
-
-        X = (m_ShadowSize * 2 + m_BorderWidth / 2) * DpiFactor
-        Y = (m_ShadowSize * 2 + m_BorderWidth / 2) * DpiFactor
-
-        If m_ShadowOffsetX < 0 Then X = X - m_ShadowOffsetX * DpiFactor
-        If m_ShadowOffsetY < 0 Then Y = Y - m_ShadowOffsetY * DpiFactor
-
-        If X <= 0 Then X = 0
-        If Y < 0 Then Y = 0
-
-        hPath = CreateRoundPath(X, Y, _
-            tWinSize.cx + (m_BorderWidth + m_Margin * 2) * DpiFactor, _
-            tWinSize.cy + (m_BorderWidth + m_Margin * 2) * DpiFactor, m_BorderRadius * DpiFactor)
-
-        GdipSetClipPath hGraphics, hPath, CombineModeXor
-
-        X = 0: Y = 0
-        If m_ShadowOffsetX > 0 Then X = m_ShadowOffsetX * DpiFactor
-        If m_ShadowOffsetY > 0 Then Y = m_ShadowOffsetY * DpiFactor
-
-        If m_ShadowSize > 0 And m_ShadowOpacity > 0 Then
-            RenderStretchPlus hGraphics, X, Y, lWidth - Abs(m_ShadowOffsetX) * DpiFactor, lHeight - Abs(m_ShadowOffsetY) * DpiFactor, hImgShadow, 0, 0, nSize + m_ShadowSize * 2 * DpiFactor, nSize + m_ShadowSize * 2 * DpiFactor, (m_ShadowSize * 2 + m_BorderRadius) * DpiFactor
-        End If
-        GdipResetClip hGraphics
-
-        X = (m_ShadowSize * 2 + m_BorderWidth + m_Margin) * DpiFactor
-        Y = (m_ShadowSize * 2 + m_BorderWidth + m_Margin) * DpiFactor
-
-        hRgn = CreateRectRgn(0, 0, tWinSize.cx, tWinSize.cy)
-        Call GetWindowRgn(m_hwnd, hRgn)
-        OffsetRgn hRgn, X, Y
-        GdipSetClipHrgn hGraphics, hRgn, CombineModeXor
-        DeleteObject hRgn
-
-        GdipCreateSolidFill RGBtoARGB(m_BackColor, m_BackColorOpacity), hBrush
-        GdipFillPath hGraphics, hBrush, hPath
-        GdipDeleteBrush hBrush
-
-        If m_BorderWidth > 0 And m_BorderOpacity > 0 Then
-            GdipCreatePen1 RGBtoARGB(m_BorderColor, m_BorderOpacity), m_BorderWidth * DpiFactor, &H2, hPen
-            GdipDrawPath hGraphics, hPen, hPath
-            GdipDeletePen hPen
-        End If
-
-        GdipDeletePath hPath
-        GdipDeleteGraphics hGraphics
-        If m_isWinChild Then
-            BitBlt lDC, 0, 0, lWidth, lHeight, c_lhDC, 0, 0, vbSrcCopy
-            ReleaseDC hWinShadow, lDC
-            pvCleanUp
-        Else
-            tSize.cx = lWidth: tSize.cy = lHeight
-            Call UpdateLayeredWindow(hWinShadow, 0, 0, tSize, c_lhDC, PT, 0&, tBLENDFUNCTION, ULW_ALPHA)
-        End If
-    End Sub
-
-    Private Sub CreateShadow()
-        Dim hImage As LongPtr
-        Dim hGraphics As LongPtr
-        Dim hPath As LongPtr, hBrush As LongPtr
-        nSize = (m_ShadowSize * 4 + m_BorderRadius * 2) * DpiFactor
-        If hImgShadow Then GdipDisposeImage hImgShadow: hImgShadow = 0
-        If nSize <= 0 Then Exit Sub
-        GdipCreateBitmapFromScan0 nSize, nSize, 0&, PixelFormat32bppPARGB, 0, hImage
-        GdipGetImageGraphicsContext hImage, hGraphics
-
-        hPath = CreateRoundPath(0, 0, nSize, nSize, m_BorderRadius * 1.5 * DpiFactor)
-        GdipCreateSolidFill RGBtoARGB(m_ShadowColor, m_ShadowOpacity), hBrush
-        GdipFillPath hGraphics, hBrush, hPath
-        GdipDeleteBrush hBrush
-        GdipDeletePath hPath
-
-        hImgShadow = CreateBlurShadowImage(hImage, m_ShadowColor, m_ShadowSize * DpiFactor, 0, 0, nSize, nSize)
-        GdipDeleteGraphics hGraphics
-        GdipDisposeImage hImage
-    End Sub
-
+    '==========================================================================
+    ' Ciclo de vida
+    '==========================================================================
     Private Sub Class_Initialize()
-        Dim GdipStartupInput As GDIPlusStartupInput
-        GdipStartupInput.GdiPlusVersion = 1&
-        Call GdiplusStartup(GdipToken, GdipStartupInput, 0)
-
-        DpiFactor = GetWindowsDPI
-
-        With tBLENDFUNCTION
-            .AlphaFormat = AC_SRC_ALPHA
-            .SourceConstantAlpha = 255
-        End With
-
+        UCL_GdipStart
+        m_Dpi = GetWindowsDPI
         m_BorderColor = vbActiveBorder
         m_BackColor = vbWindowBackground
         m_BorderWidth = 1
@@ -565,258 +370,389 @@ Class ClsShadow
         m_BorderOpacity = 100
         m_ShadowSize = 3
         m_ContainerBkColor = CLR_NONE
-        bRecreateShadow = True
     End Sub
 
     Private Sub Class_Terminate()
-        ' Quitar las subclasificaciones ANTES de destruir ventanas para que
-        ' no lleguen mensajes a un objeto que se esta destruyendo.
-        pvRemoveSubclasses
-        If Not m_isWinChild And m_hwnd <> 0 Then
-            SetWindowLongPtrW m_hwnd, GWL_HWNDPARENT, 0
-        End If
-        If hWinShadow Then DestroyWindow hWinShadow: hWinShadow = 0
-        pvCleanUp
-        If hImgShadow Then GdipDisposeImage hImgShadow: hImgShadow = 0
-        Call GdiplusShutdown(GdipToken)
+        Detach
+        UCL_GdipStop
     End Sub
 
-    Private Sub pvRemoveSubclasses()
-        If m_SubclassedShadow Then UCL_UnsubclassShadow m_SubclassedShadow, ObjPtr(Me): m_SubclassedShadow = 0
-        If m_SubclassedOwner Then UCL_UnsubclassShadow m_SubclassedOwner, ObjPtr(Me): m_SubclassedOwner = 0
-    End Sub
-
-    Private Function CreateRoundPath(ByVal Left As Long, ByVal Top As Long, ByVal Width As Long, ByVal Height As Long, ByVal Radius As Long) As LongPtr
-        Dim mPath As LongPtr
-        If GdipCreatePath(0, mPath) = 0 Then
-            If Radius = 0 Then
-                GdipAddPathRectangleI mPath, Left, Top, Width, Height
-                CreateRoundPath = mPath
-                Exit Function
-            End If
-            GdipAddPathArcI mPath, Left, Top, Radius, Radius, 180, 90
-            GdipAddPathArcI mPath, Left + Width - Radius, Top, Radius, Radius, 270, 90
-            GdipAddPathArcI mPath, Left + Width - Radius, Top + Height - Radius, Radius, Radius, 0, 90
-            GdipAddPathArcI mPath, Left, Top + Height - Radius, Radius, Radius, 90, 90
-            GdipClosePathFigure mPath
-        End If
-        CreateRoundPath = mPath
-    End Function
-
-    Public Function GetWindowsDPI() As Double
-        Dim lHdc As LongPtr, LPX As Double
-        lHdc = GetDC(0)
-        LPX = CDbl(GetDeviceCaps(lHdc, LOGPIXELSX))
-        ReleaseDC 0, lHdc
-
-        If (LPX = 0) Then
-            GetWindowsDPI = 1#
+    Private Function Attach(ByVal hWnd As LongPtr, ByVal isWinChild As Boolean) As Boolean
+        Dim sClass As String
+        Dim hOwner As LongPtr, lEx As Long
+        If Not UCL_RegisterClass(App.hInstance) Then Exit Function
+        sClass = UCL_CLASSNAME
+        m_hTarget = hWnd
+        m_bChild = isWinChild
+        If isWinChild Then
+            m_hShadow = CreateWindowExW(0, StrPtr(sClass), 0, WS_CHILD Or WS_CLIPSIBLINGS, 0, 0, 0, 0, GetParent(hWnd), 0, App.hInstance, 0)
         Else
-            GetWindowsDPI = LPX / 96#
+            hOwner = GetWindow(hWnd, GW_OWNER)
+            lEx = WS_EX_LAYERED Or WS_EX_TRANSPARENT Or WS_EX_TOOLWINDOW Or WS_EX_NOACTIVATE
+            If (CLng(GetWindowLongPtrW(hWnd, GWL_EXSTYLE)) And WS_EX_TOPMOST) <> 0 Then lEx = lEx Or WS_EX_TOPMOST
+            m_hShadow = CreateWindowExW(lEx, StrPtr(sClass), 0, WS_POPUP, 0, 0, 0, 0, hOwner, 0, App.hInstance, 0)
         End If
+        If m_hShadow = 0 Then
+            m_hTarget = 0
+            Exit Function
+        End If
+        UCL_SubclassShadow m_hShadow, ObjPtr(Me)
+        UCL_SubclassShadow m_hTarget, ObjPtr(Me)
+        Attach = True
     End Function
 
-    Private Function RGBtoARGB(ByVal RGBColor As Long, ByVal Opacity As Long) As Long 'By LaVople
-        If (RGBColor And &H80000000) Then RGBColor = GetSysColor(RGBColor And &HFF&)
-        RGBtoARGB = (RGBColor And &HFF00&) Or (RGBColor And &HFF0000) \ &H10000 Or (RGBColor And &HFF) * &H10000
-        Opacity = CByte((Abs(Opacity) / 100) * 255)
-        If Opacity < 128 Then
-            If Opacity < 0& Then Opacity = 0&
-            RGBtoARGB = RGBtoARGB Or Opacity * &H1000000
+    Private Sub Detach()
+        If m_hTarget <> 0 Then UCL_UnsubclassShadow m_hTarget, ObjPtr(Me)
+        If m_hShadow <> 0 Then
+            UCL_UnsubclassShadow m_hShadow, ObjPtr(Me)
+            DestroyWindow m_hShadow
+        End If
+        m_hTarget = 0
+        m_hShadow = 0
+        m_bShown = False
+    End Sub
+
+    '==========================================================================
+    ' Posicion y dibujo
+    '==========================================================================
+    Private Function Px(ByVal v As Double) As Long
+        Px = CLng(v * m_Dpi)
+    End Function
+
+    ' Calcula la posicion de la sombra a partir de la ventana destino, la coloca
+    ' debajo de ella y la redibuja. bShow: mostrarla si el destino es visible.
+    Private Sub Reposition(ByVal bShow As Boolean)
+        Dim rt As RECT, rs As RECT
+        Dim TM As Long, ox As Long, oy As Long
+        Dim lFlags As Long
+        Dim bSized As Boolean
+
+        If m_hShadow = 0 Or m_hTarget = 0 Then Exit Sub
+        If m_bInPos Then Exit Sub
+        m_bInPos = True
+
+        GetWindowRect m_hTarget, rt
+        If m_bChild Then MapWindowPoints 0, GetParent(m_hTarget), rt, 2
+
+        TM = Px(m_ShadowSize * 2 + m_BorderWidth + m_Margin)
+        ox = Px(m_ShadowOffsetX)
+        oy = Px(m_ShadowOffsetY)
+
+        rs.Left = rt.Left - TM
+        rs.Top = rt.Top - TM
+        If ox < 0 Then rs.Left = rs.Left + ox
+        If oy < 0 Then rs.Top = rs.Top + oy
+        rs.Right = rt.Right + TM
+        rs.Bottom = rt.Bottom + TM
+        If ox > 0 Then rs.Right = rs.Right + ox
+        If oy > 0 Then rs.Bottom = rs.Bottom + oy
+
+        bSized = (rs.Right - rs.Left <> m_rcShadow.Right - m_rcShadow.Left) Or (rs.Bottom - rs.Top <> m_rcShadow.Bottom - m_rcShadow.Top)
+        m_rcShadow = rs
+        m_dx = rt.Left - rs.Left
+        m_dy = rt.Top - rs.Top
+        m_tW = rt.Right - rt.Left
+        m_tH = rt.Bottom - rt.Top
+
+        lFlags = SWP_NOACTIVATE
+        If bShow And m_bShown And IsWindowVisible(m_hTarget) <> 0 Then lFlags = lFlags Or SWP_SHOWWINDOW
+
+        If m_bChild Then
+            ApplyChildRegion
+            SetWindowPos m_hShadow, m_hTarget, rs.Left, rs.Top, rs.Right - rs.Left, rs.Bottom - rs.Top, lFlags
+            InvalidateRect m_hShadow, 0, 0
         Else
-            If Opacity > 255& Then Opacity = 255&
-            RGBtoARGB = RGBtoARGB Or (Opacity - 128&) * &H1000000 Or &H80000000
+            If (CLng(GetWindowLongPtrW(m_hTarget, GWL_EXSTYLE)) And WS_EX_TOPMOST) <> 0 Then
+                SetWindowPos m_hShadow, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOACTIVATE
+            End If
+            RenderLayered 0, 0, 0, 0
+            SetWindowPos m_hShadow, m_hTarget, rs.Left, rs.Top, rs.Right - rs.Left, rs.Bottom - rs.Top, lFlags
+        End If
+        m_bInPos = False
+    End Sub
+
+    ' Region de la sombra hija: todo menos la ventana destino (asi nunca la tapa).
+    Private Sub ApplyChildRegion()
+        Dim hRgn As LongPtr, hHole As LongPtr
+        hRgn = CreateRectRgn(0, 0, m_rcShadow.Right - m_rcShadow.Left, m_rcShadow.Bottom - m_rcShadow.Top)
+        hHole = TargetRegion()
+        CombineRgn hRgn, hRgn, hHole, RGN_DIFF
+        DeleteObject hHole
+        SetWindowRgn m_hShadow, hRgn, 1     'el sistema pasa a ser propietario de hRgn
+    End Sub
+
+    ' Region de la ventana destino en coordenadas de la sombra.
+    Private Function TargetRegion() As LongPtr
+        Dim hRgn As LongPtr
+        hRgn = CreateRectRgn(0, 0, m_tW, m_tH)
+        If GetWindowRgn(m_hTarget, hRgn) = ERROR_RGN Then
+            DeleteObject hRgn
+            hRgn = CreateRectRgn(0, 0, m_tW, m_tH)
+        End If
+        OffsetRgn hRgn, m_dx, m_dy
+        TargetRegion = hRgn
+    End Function
+
+    Private Function ARGB(ByVal Color As Long, ByVal Opacity As Long) As Long
+        Dim a As Long
+        If (Color And &H80000000) <> 0 Then Color = GetSysColor(Color And &HFF&)
+        If Opacity < 0 Then Opacity = 0
+        If Opacity > 100 Then Opacity = 100
+        a = (Opacity * 255) \ 100
+        ARGB = (Color And &HFF00&) Or ((Color And &HFF&) * &H10000) Or ((Color And &HFF0000) \ &H10000)
+        If a > 127 Then
+            ARGB = ARGB Or ((a - 128) * &H1000000) Or &H80000000
+        Else
+            ARGB = ARGB Or (a * &H1000000)
         End If
     End Function
 
-    Private Function CreateBlurShadowImage(ByVal hImage As LongPtr, ByVal Color As Long, ByVal blurDepth As Integer, _
-                                            Optional ByVal Left As Long, Optional ByVal Top As Long, _
-                                            Optional ByVal Width As Long, Optional ByVal Height As Long) As LongPtr
+    Private Function RoundPath(ByVal X As Long, ByVal Y As Long, ByVal W As Long, ByVal H As Long, ByVal D As Long) As LongPtr
+        Dim p As LongPtr
+        If W < 1 Then W = 1
+        If H < 1 Then H = 1
+        If D * 2 > W Then D = W \ 2
+        If D * 2 > H Then D = H \ 2
+        If GdipCreatePath(0, p) <> 0 Then Exit Function
+        If D <= 0 Then
+            GdipAddPathRectangleI p, X, Y, W, H
+        Else
+            GdipAddPathArcI p, X, Y, D, D, 180, 90
+            GdipAddPathArcI p, X + W - D, Y, D, D, 270, 90
+            GdipAddPathArcI p, X + W - D, Y + H - D, D, D, 0, 90
+            GdipAddPathArcI p, X, Y + H - D, D, D, 90, 90
+            GdipClosePathFigure p
+        End If
+        RoundPath = p
+    End Function
 
-        Dim REC As RECTL
-        Dim X As Long, Y As Long
-        Dim hImgShadow As LongPtr
-        Dim bmpData1 As BitmapData
-        Dim bmpData2 As BitmapData
-        Dim t2xBlur As Long
-        Dim R As Long, G As Long, B As Long
-        Dim dBytes() As Byte
-        Dim srcBytes() As Byte
-        Dim vTally() As Long
-        Dim tAlpha As Long, tColumn As Long, tAvg As Long
-        Dim initY As Long, initYstop As Long, initYstart As Long
+    ' Dibuja sombra + fondo + borde con GDI+ sobre hDC (W x H, coordenadas de la sombra).
+    Private Sub RenderShape(ByVal hDC As LongPtr, ByVal W As Long, ByVal H As Long)
+        Dim g As LongPtr, pth As LongPtr, ps As LongPtr
+        Dim br As LongPtr, pn As LongPtr
+        Dim I As Long, D As Long, S As Long, k As Long
+        Dim ox As Long, oy As Long
+        Dim px0 As Long, py0 As Long, pw As Long, ph As Long
+        Dim dAlpha As Double, lA As Long
+        Dim hHole As LongPtr
 
-        If hImage = 0 Then Exit Function
+        If GdipCreateFromHDC(hDC, g) <> 0 Then Exit Sub
+        GdipSetSmoothingMode g, SmoothingModeAntiAlias
 
-        If Width = 0& Then Call GdipGetImageWidth(hImage, Width)
-        If Height = 0& Then Call GdipGetImageHeight(hImage, Height)
+        I = Px(m_Margin) + Px(m_BorderWidth) \ 2
+        D = Px(m_BorderRadius)
+        px0 = m_dx - I: py0 = m_dy - I
+        pw = m_tW + I * 2: ph = m_tH + I * 2
+        pth = RoundPath(px0, py0, pw, ph, D)
 
-        t2xBlur = blurDepth * 2
+        ' Sombra: capas concentricas cuya opacidad acumulada en el borde de la
+        ' figura es ShadowOpacity y cae hasta 0 en ShadowSize*2.
+        S = Px(m_ShadowSize * 2)
+        If S > 0 And m_ShadowOpacity > 0 And pth <> 0 Then
+            ox = Px(m_ShadowOffsetX): oy = Px(m_ShadowOffsetY)
+            GdipSetClipPath g, pth, CombineModeExclude
+            dAlpha = 1 - (1 - m_ShadowOpacity / 100#) ^ (1 / S)
+            lA = CLng(dAlpha * 100)
+            If lA < 1 Then lA = 1
+            For k = S To 1 Step -1
+                ps = RoundPath(px0 + ox - k, py0 + oy - k, pw + k * 2, ph + k * 2, D + k * 2)
+                If ps <> 0 Then
+                    GdipCreateSolidFill ARGB(m_ShadowColor, lA), br
+                    GdipFillPath g, br, ps
+                    GdipDeleteBrush br
+                    GdipDeletePath ps
+                End If
+            Next
+            GdipResetClip g
+        End If
 
-        If (Color And &H80000000) Then Color = GetSysColor(Color And &HFF&)
-
-        SetRect REC, Left, Top, Width, Height
-
-        ReDim srcBytes(REC.Width * 4 - 1&, REC.Height - 1&)
-
-        With bmpData1
-            .Scan0Ptr = VarPtr(srcBytes(0&, 0&))
-            .stride = 4& * REC.Width
-        End With
-
-        Call GdipBitmapLockBits(hImage, REC, ImageLockModeUserInputBuf Or ImageLockModeRead, PixelFormat32bppPARGB, bmpData1)
-
-        SetRect REC, Left, Top, Width + t2xBlur, Height + t2xBlur
-
-        Call GdipCreateBitmapFromScan0(REC.Width, REC.Height, 0&, PixelFormat32bppPARGB, 0, hImgShadow)
-
-        ReDim dBytes(REC.Width * 4 - 1&, REC.Height - 1&)
-
-        With bmpData2
-            .Scan0Ptr = VarPtr(dBytes(0&, 0&))
-            .stride = 4& * REC.Width
-        End With
-
-        Call GdipBitmapLockBits(hImgShadow, REC, ImageLockModeUserInputBuf Or ImageLockModeRead Or ImageLockModeWrite, PixelFormat32bppPARGB, bmpData2)
-
-        R = Color And &HFF
-        G = (Color \ &H100&) And &HFF
-        B = (Color \ &H10000) And &HFF
-
-        tAvg = (t2xBlur + 1) * (t2xBlur + 1)    ' cuantos pixeles se difuminan
-
-        ReDim vTally(0 To t2xBlur)              ' columnas de difuminado por pixel
-
-        For Y = 0 To Height + t2xBlur - 1
-
-            FillMemory vTally(0), (t2xBlur + 1) * 4, 0
-
-            If Y < t2xBlur Then
-                initYstart = 0
-            Else
-                initYstart = Y - t2xBlur
+        ' Fondo (franja Margin) y borde, sin pintar encima de la ventana destino
+        If pth <> 0 Then
+            hHole = TargetRegion()
+            GdipSetClipHrgn g, hHole, CombineModeExclude
+            DeleteObject hHole
+            If m_BackColorOpacity > 0 Then
+                GdipCreateSolidFill ARGB(m_BackColor, m_BackColorOpacity), br
+                GdipFillPath g, br, pth
+                GdipDeleteBrush br
             End If
-            If Y < Height Then initYstop = Y Else initYstop = Height - 1
-
-            tAlpha = 0
-            tColumn = 0
-
-            For initY = initYstart To initYstop
-                tAlpha = tAlpha + srcBytes(3, initY)
-            Next
-            vTally(t2xBlur) = tAlpha
-
-            For X = 3 To (Width - 2) * 4 - 1 Step 4
-                dBytes(X, Y) = tAlpha \ tAvg
-                Select Case dBytes(X, Y)
-                Case 255
-                    dBytes(X - 1, Y) = R
-                    dBytes(X - 2, Y) = G
-                    dBytes(X - 3, Y) = B
-                Case 0
-                Case Else
-                    dBytes(X - 1, Y) = R * dBytes(X, Y) \ 255
-                    dBytes(X - 2, Y) = G * dBytes(X, Y) \ 255
-                    dBytes(X - 3, Y) = B * dBytes(X, Y) \ 255
-                End Select
-                tAlpha = tAlpha - vTally(tColumn)
-                vTally(tColumn) = 0&
-                For initY = initYstart To initYstop
-                    vTally(tColumn) = vTally(tColumn) + srcBytes(X + 4, initY)
-                Next
-                tAlpha = tAlpha + vTally(tColumn)
-                tColumn = (tColumn + 1) Mod (t2xBlur + 1)
-            Next
-
-            For X = X To (Width + t2xBlur - 1) * 4 - 1 Step 4
-                dBytes(X, Y) = tAlpha \ tAvg
-                Select Case dBytes(X, Y)
-                Case 255
-                    dBytes(X - 1, Y) = R
-                    dBytes(X - 2, Y) = G
-                    dBytes(X - 3, Y) = B
-                Case 0
-                Case Else
-                    dBytes(X - 1, Y) = R * dBytes(X, Y) \ 255
-                    dBytes(X - 2, Y) = G * dBytes(X, Y) \ 255
-                    dBytes(X - 3, Y) = B * dBytes(X, Y) \ 255
-                End Select
-                tAlpha = tAlpha - vTally(tColumn)
-                tColumn = (tColumn + 1) Mod (t2xBlur + 1)
-            Next
-        Next
-
-        Call GdipBitmapUnlockBits(hImage, bmpData1)
-        Call GdipBitmapUnlockBits(hImgShadow, bmpData2)
-
-        CreateBlurShadowImage = hImgShadow
-    End Function
-
-    Private Sub RenderStretchPlus(ByVal hGraphics As LongPtr, _
-                ByVal DestX As Long, ByVal DestY As Long, ByVal DestW As Long, ByVal DestH As Long, ByVal hImage As LongPtr, _
-                ByVal X As Long, ByVal Y As Long, ByVal Width As Long, ByVal Height As Long, ByVal Size As Long)
-
-        Dim Sx2 As Long
-
-        Sx2 = Size * 2
-
-        GdipDrawImageRectRectI hGraphics, hImage, DestX, DestY, Size, Size, X, Y, Size, Size, &H2, 0, 0, 0 'TOP_LEFT
-        GdipDrawImageRectRectI hGraphics, hImage, DestX + Size, DestY, DestW - Sx2, Size, X + Size, Y, Width - Sx2, Size, &H2, 0, 0, 0 'TOP_CENTER
-        GdipDrawImageRectRectI hGraphics, hImage, DestX + DestW - Size, DestY, Size, Size, X + Width - Size, Y, Size, Size, &H2, 0, 0, 0 'TOP_RIGHT
-        GdipDrawImageRectRectI hGraphics, hImage, DestX, DestY + Size, Size, DestH - Sx2, X, Y + Size, Size, Height - Sx2, &H2, 0, 0, 0 'MID_LEFT
-        GdipDrawImageRectRectI hGraphics, hImage, DestX + Size, DestY + Size, DestW - Sx2, DestH - Sx2, X + Size, Y + Size, Width - Sx2, Height - Sx2, &H2, 0, 0, 0 'MID_CENTER
-        GdipDrawImageRectRectI hGraphics, hImage, DestX + DestW - Size, DestY + Size, Size, DestH - Sx2, X + Width - Size, Y + Size, Size, Height - Sx2, &H2, 0, 0, 0 'MID_RIGHT
-        GdipDrawImageRectRectI hGraphics, hImage, DestX, DestY + DestH - Size, Size, Size, X, Y + Height - Size, Size, Size, &H2, 0, 0, 0 'BOTTOM_LEFT
-        GdipDrawImageRectRectI hGraphics, hImage, DestX + Size, DestY + DestH - Size, DestW - Sx2, Size, X + Size, Y + Height - Size, Width - Sx2, Size, &H2, 0, 0, 0 'BOTTOM_CENTER
-        GdipDrawImageRectRectI hGraphics, hImage, DestX + DestW - Size, DestY + DestH - Size, Size, Size, X + Width - Size, Y + Height - Size, Size, Size, &H2, 0, 0, 0 'BOTTOM_RIGHT
+            GdipResetClip g
+            If m_BorderWidth > 0 And m_BorderOpacity > 0 Then
+                GdipCreatePen1 ARGB(m_BorderColor, m_BorderOpacity), Px(m_BorderWidth), UnitPixel, pn
+                GdipDrawPath g, pn, pth
+                GdipDeletePen pn
+            End If
+            GdipDeletePath pth
+        End If
+        GdipDeleteGraphics g
     End Sub
 
-    ' Extrae las coordenadas con signo (GET_X_LPARAM / GET_Y_LPARAM) en 32 y 64 bits
-    Private Sub SplitLParam(ByVal lParam As LongPtr, ByRef X As Long, ByRef Y As Long)
-        Dim w(1) As Integer
-        CopyMemory w(0), lParam, 4
-        X = w(0)
-        Y = w(1)
+    ' Crea un DIB de 32 bits (W x H) seleccionado en un DC nuevo.
+    Private Function CreateDIB32(ByVal W As Long, ByVal H As Long, ByRef hMemDC As LongPtr, ByRef hOldBmp As LongPtr) As LongPtr
+        Dim bi As BITMAPINFOHEADER
+        Dim pBits As LongPtr
+        bi.biSize = 40
+        bi.biWidth = W
+        bi.biHeight = -H
+        bi.biPlanes = 1
+        bi.biBitCount = 32
+        hMemDC = CreateCompatibleDC(0)
+        CreateDIB32 = CreateDIBSection(hMemDC, bi, 0, pBits, 0, 0)
+        hOldBmp = SelectObject(hMemDC, CreateDIB32)
+    End Function
+
+    ' Sombra de ventana de nivel superior: ventana capa con alfa por pixel.
+    ' lMode = 1: ademas pinta hBmp en el hueco de la ventana destino (DrawBitmap).
+    Private Sub RenderLayered(ByVal hBmp As LongPtr, ByVal bW As Long, ByVal bH As Long, ByVal lMode As Long)
+        Dim W As Long, H As Long
+        Dim hMemDC As LongPtr, hDIB As LongPtr, hOld As LongPtr
+        Dim ptDst As POINTAPI, ptSrc As POINTAPI, sz As SIZEAPI
+        Dim bf As BLENDFUNCTION
+        Dim g As LongPtr, img As LongPtr, hHole As LongPtr
+
+        If m_hShadow = 0 Or m_bChild Then Exit Sub
+        W = m_rcShadow.Right - m_rcShadow.Left
+        H = m_rcShadow.Bottom - m_rcShadow.Top
+        If W <= 0 Or H <= 0 Then Exit Sub
+
+        hDIB = CreateDIB32(W, H, hMemDC, hOld)
+        If hDIB = 0 Then
+            DeleteDC hMemDC
+            Exit Sub
+        End If
+        RenderShape hMemDC, W, H
+
+        If lMode = 1 And hBmp <> 0 Then
+            If GdipCreateFromHDC(hMemDC, g) = 0 Then
+                hHole = TargetRegion()
+                GdipSetClipHrgn g, hHole, CombineModeIntersect
+                DeleteObject hHole
+                If GdipCreateBitmapFromHBITMAP(hBmp, 0, img) = 0 Then
+                    GdipDrawImageRectRectI g, img, m_dx, m_dy, bW, bH, 0, 0, bW, bH, UnitPixel, 0, 0, 0
+                    GdipDisposeImage img
+                End If
+                GdipDeleteGraphics g
+            End If
+        End If
+
+        ptDst.X = m_rcShadow.Left: ptDst.Y = m_rcShadow.Top
+        sz.cx = W: sz.cy = H
+        bf.SourceConstantAlpha = 255
+        bf.AlphaFormat = AC_SRC_ALPHA
+        UpdateLayeredWindow m_hShadow, 0, ptDst, sz, hMemDC, ptSrc, 0, bf, ULW_ALPHA
+
+        SelectObject hMemDC, hOld
+        DeleteObject hDIB
+        DeleteDC hMemDC
     End Sub
 
-    ' Procedimiento de subclase (llamado desde mUcListHelpers.UCL_ShadowProc)
-    Friend Function zzSubclassProc(ByVal lhWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr) As LongPtr
-        Dim X As Long, Y As Long
+    ' Sombra hija: se pinta en WM_PAINT sobre el fondo del contenedor.
+    Private Sub PaintChild()
+        Dim ps As PAINTSTRUCT
+        Dim hDC As LongPtr, hMemDC As LongPtr, hDIB As LongPtr, hOld As LongPtr
+        Dim W As Long, H As Long
+        Dim rc As RECT
+        Dim hBr As LongPtr, lBk As Long, hParentDC As LongPtr
 
-        On Error Resume Next
-
-        Select Case uMsg
-            Case WM_PAINT ' ventana hija (sombra)
-                zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)
-                If lhWnd = hWinShadow Then Update
-                Exit Function
-
-            Case WM_DESTROY, WM_NCDESTROY
-                zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)
-                If lhWnd = m_SubclassedShadow Then
-                    UCL_UnsubclassShadow lhWnd, ObjPtr(Me)
-                    m_SubclassedShadow = 0
-                ElseIf lhWnd = m_SubclassedOwner And uMsg = WM_NCDESTROY Then
-                    UCL_UnsubclassShadow lhWnd, ObjPtr(Me)
-                    m_SubclassedOwner = 0
+        hDC = BeginPaint(m_hShadow, ps)
+        W = m_rcShadow.Right - m_rcShadow.Left
+        H = m_rcShadow.Bottom - m_rcShadow.Top
+        If W > 0 And H > 0 Then
+            hDIB = CreateDIB32(W, H, hMemDC, hOld)
+            If hDIB <> 0 Then
+                rc.Right = W: rc.Bottom = H
+                If m_ContainerBkColor <> CLR_NONE Then
+                    lBk = m_ContainerBkColor
+                    If (lBk And &H80000000) <> 0 Then lBk = GetSysColor(lBk And &HFF&)
+                    hBr = CreateSolidBrush(lBk)
+                    FillRect hMemDC, rc, hBr
+                    DeleteObject hBr
+                ElseIf DrawThemeParentBackground(m_hShadow, hMemDC, 0) <> 0 Then
+                    ' el contenedor no pinta su fondo: usar su color de fondo de DC
+                    hParentDC = GetDC(GetParent(m_hShadow))
+                    lBk = GetBkColor(hParentDC)
+                    ReleaseDC GetParent(m_hShadow), hParentDC
+                    hBr = CreateSolidBrush(lBk)
+                    FillRect hMemDC, rc, hBr
+                    DeleteObject hBr
                 End If
-                Exit Function
+                RenderShape hMemDC, W, H
+                BitBlt hDC, 0, 0, W, H, hMemDC, 0, 0, vbSrcCopy
+                SelectObject hMemDC, hOld
+                DeleteObject hDIB
+            End If
+            DeleteDC hMemDC
+        End If
+        EndPaint m_hShadow, ps
+    End Sub
 
-            Case WM_MOVE ' ventana propietaria (popup)
-                zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)
-                If lhWnd = m_SubclassedOwner And hWinShadow <> 0 Then
-                    SplitLParam lParam, X, Y
-                    X = X - (m_ShadowSize * 2 + m_BorderWidth + m_Margin) * DpiFactor
-                    Y = Y - (m_ShadowSize * 2 + m_BorderWidth + m_Margin) * DpiFactor
-                    If m_ShadowOffsetX < 0 Then X = X + m_ShadowOffsetX * DpiFactor
-                    If m_ShadowOffsetY < 0 Then Y = Y + m_ShadowOffsetY * DpiFactor
+    '==========================================================================
+    ' Mensajes (llamado desde mUcListHelpers.UCL_ShadowProc)
+    '==========================================================================
+    Public Function zzWndProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+        Dim lFlags As Long
+        Dim lPtr As Long
 
-                    SetWindowPos hWinShadow, 0, X, Y, 0, 0, SWP_NOSIZE Or SWP_NOACTIVATE
-                End If
-                Exit Function
-        End Select
+        If hWnd = m_hShadow And m_hShadow <> 0 Then
+            Select Case uMsg
+                Case WM_PAINT
+                    If m_bChild Then
+                        PaintChild
+                        Exit Function
+                    End If
+                Case WM_ERASEBKGND
+                    zzWndProc = 1
+                    Exit Function
+                Case WM_NCHITTEST
+                    zzWndProc = HTTRANSPARENT
+                    Exit Function
+                Case WM_MOUSEACTIVATE
+                    zzWndProc = MA_NOACTIVATE
+                    Exit Function
+                Case WM_NCDESTROY
+                    zzWndProc = UCL_DefProc(hWnd, uMsg, wParam, lParam)
+                    UCL_UnsubclassShadow hWnd, ObjPtr(Me)
+                    m_hShadow = 0
+                    Exit Function
+            End Select
 
-        zzSubclassProc = UCL_DefProc(lhWnd, uMsg, wParam, lParam)
+        ElseIf hWnd = m_hTarget And m_hTarget <> 0 Then
+            Select Case uMsg
+                Case WM_WINDOWPOSCHANGED
+                    zzWndProc = UCL_DefProc(hWnd, uMsg, wParam, lParam)
+                    If lParam <> 0 And m_hShadow <> 0 Then
+                        ' WINDOWPOS: hwnd, hwndInsertAfter, x, y, cx, cy, flags
+                        lPtr = LenB(lParam)
+                        CopyFlags lFlags, lParam + lPtr * 2 + 16
+                        If (lFlags And SWP_HIDEWINDOW) <> 0 Then
+                            ShowWindow m_hShadow, SW_HIDE
+                        ElseIf m_bShown Then
+                            If (lFlags And SWP_SHOWWINDOW) <> 0 Then
+                                Reposition True
+                            ElseIf (lFlags And (SWP_NOMOVE Or SWP_NOSIZE)) <> (SWP_NOMOVE Or SWP_NOSIZE) Or (lFlags And SWP_NOZORDER) = 0 Then
+                                Reposition (IsWindowVisible(m_hShadow) <> 0)
+                            End If
+                        End If
+                    End If
+                    Exit Function
+                Case WM_DESTROY
+                    zzWndProc = UCL_DefProc(hWnd, uMsg, wParam, lParam)
+                    Detach
+                    Exit Function
+                Case WM_NCDESTROY
+                    zzWndProc = UCL_DefProc(hWnd, uMsg, wParam, lParam)
+                    UCL_UnsubclassShadow hWnd, ObjPtr(Me)
+                    m_hTarget = 0
+                    Exit Function
+            End Select
+        End If
+
+        zzWndProc = UCL_DefProc(hWnd, uMsg, wParam, lParam)
     End Function
+
+    Private Sub CopyFlags(ByRef lFlags As Long, ByVal pAddr As LongPtr)
+        CopyMemoryAny lFlags, pAddr, 4
+    End Sub
+
 
 End Class

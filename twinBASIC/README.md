@@ -1,227 +1,69 @@
-# ucListPlus para twinBASIC
+# ucList para twinBASIC (32/64 bits)
 
-Conversión del control **ucList** (ucListPlus, de Leandro Ascierto) de VB6 a
-[twinBASIC](https://twinbasic.com). Mantiene los mismos **eventos, propiedades y
-métodos públicos** que el `ucList.ctl` original y compila tanto en **32 como en 64 bits**.
+Reescritura desde cero del control **ucList** (y su clase **ClsShadow**) de ucListPlus para twinBASIC.
+La interfaz pública es la del original: los mismos eventos, propiedades, métodos, enumeraciones y nombres en el PropertyBag. Solo cambian a `LongPtr` los parámetros que son handles (`hWnd`, `hDC`, `hBmp` y `oTextBox`), para que funcione en 64 bits.
 
-## Archivos
+## Archivos (`Sources/`)
 
-| Archivo | Descripción |
-|---|---|
-| `Sources/ucList.twin` | Código del UserControl `ucList` |
-| `Sources/ucList.tbcontrol` | Diseñador del UserControl (vacío: no contiene controles hijos) |
-| `Sources/ClsShadow.twin` | Clase de sombra/borde (`ucList.Shadow`), convertida a 64 bits |
-| `Sources/mUcListHelpers.twin` | Módulo de subclasificación (`SetWindowSubclass`) |
-| `Sources/ucSelect.twin` + `.tbcontrol` | Control ComboBox de ejemplo (usa un `ucList` interno) |
-| `Sources/IUcListNotify.twin` | Interfaz con la que el `ucList` avisa al `ucSelect` |
-| `Sources/JsonBag.twin` | Parser JSON usado por los ejemplos `FrmComboBox` y `FrmGoogleSearch` |
-| `Sources/Forms/*.tbform` + `*.twin` | Los 10 formularios de ejemplo recreados |
-| `Demo/*.bmp` | Imágenes de `FrmGoogleSearch` extraídas de su `.frx` |
+| Archivo | Tipo | Contenido |
+|---|---|---|
+| `ucList.twin` + `ucList.tbcontrol` | UserControl (`Class ucList … End Class`) | El control. El `.tbcontrol` es el JSON del diseñador; el control no tiene controles hijos de diseño. |
+| `ClsShadow.twin` | Clase (`Class ClsShadow … End Class`) | Sombra y borde redondeado. |
+| `mUcListHelpers.twin` | Módulo (`Module mUcListHelpers … End Module`) | Subclasificación (SetWindowSubclass), clase de ventana propia, GDI+, ganchos de teclado y ratón. |
 
-`ucScrollbar.ctl` y `clsSubClass.cls` **ya no son necesarios**.
+Todos los archivos usan saltos de línea CRLF (`\r\n`), igual que los que genera twinBASIC.
 
-## Cómo usarlo
+Uso: añade los cuatro archivos al proyecto (o arrastra la carpeta `Sources`) y coloca ucList en el formulario.
+Las propiedades de diseño (ListStyle, ItemHeight, colores, etc.) se configuran en la ventana de propiedades, como en VB6.
 
-1. Crea un proyecto nuevo en twinBASIC (por ejemplo *Standard EXE*).
-2. En el *Project Explorer*, clic derecho sobre la carpeta `Sources` → **Import** →
-   selecciona los 4 archivos de `twinBASIC/Sources`.
-3. El control `ucList` aparece en la caja de herramientas. Úsalo igual que en VB6:
+## Arquitectura
 
-```vb
-Private Sub Form_Load()
-    With ucList1
-        .ImageListInitialize 16, 16
-        .ImageListAddImage App.Path & "\icono.png"
-        .AddItem "Copiar" & vbTab & "Ctrl+C", 0
-        .AddItem "-"
-        .AddItem "Pegar" & vbTab & "Ctrl+V"
-        .Shadow.ShadowOffsetY = 2
-    End With
-End Sub
+* **La lista vive en una ventana propia** (clase `ucListPlusWnd`), que se pinta con doble buffer:
+  * `ListStyle = StyleListBox`: ventana hija que ocupa todo el UserControl.
+  * `StyleDropDown` / `StyleMenu`: ventana emergente `WS_EX_NOACTIVATE`, propiedad del formulario. En tiempo de ejecución el UserControl queda oculto, como en el original.
+* **Filtro (`ShowFilter`)**: un control `EDIT` de Win32 creado por código, hijo de la ventana de la lista. Con `EN_CHANGE` se filtra y el texto encontrado se resalta con `FindTextColor`.
+* **Barra de desplazamiento** interna. En `GoogleDesign` es un pulgar fino redondeado; en `MicrosoftDesign` es una barra con tema y botones. Responde a la rueda, al arrastre del pulgar, a los clics en la pista y a la repetición al mantener pulsado.
+* **Sombra**: en ListBox, `ClsShadow` usa una ventana hija recortada por región. En las emergentes usa una ventana *layered* con `UpdateLayeredWindow`. La sombra sigue a su ventana cuando se mueve, se oculta o se destruye.
 
-Private Sub Command1_Click()
-    Dim R As RECT
-    GetWindowRect Command1.hWnd, R
-    ucList1.ShowList R.Left, R.Bottom, , R.Top
-End Sub
+## Modelo de foco
 
-Private Sub ucList1_ItemClick()
-    Debug.Print ucList1.Text
-End Sub
-```
+* **Listas emergentes (DropDown/Menu)**: nunca toman el foco.
+  * El control que lo tenía lo conserva: el botón, o el TextBox de `AutoCompleteTextBox`.
+  * Mientras hay una lista abierta, un gancho de teclado *del hilo* hace lo que hacía `RegisterHotKey` en el original, sin afectar a otras aplicaciones:
+    * Las teclas de navegación (↑ ↓ Inicio Fin RePág AvPág Intro Esc ← →) van a la lista.
+    * Tab cierra la lista y **sigue su camino**: el foco pasa al siguiente control.
+    * Con filtro, los caracteres van al EDIT, y también Supr, Ctrl+A/C/V/X.
+    * Sin filtro, los caracteres sirven para buscar por la primera letra o para activar el acelerador `&` en los menús.
+    * Con `AutoCompleteTextBox`, el resto de teclas siguen yendo al TextBox.
+  * Un gancho de ratón detecta los clics fuera de las listas abiertas. El cierre se **publica**, así que el clic llega antes a su destino.
+  * La lista también se cierra cuando:
+    * el formulario se desactiva, se mueve o cambia de tamaño;
+    * el TextBox de autocompletar pierde el foco.
+* **ListBox**:
+  * El foco del UserControl se pasa a la ventana de la lista, o al EDIT si `ShowFilter = True`.
+  * Tab sale del control con normalidad.
+  * Al tener el foco, la sombra y el borde toman `SelectionColor`; al perderlo vuelven a `BorderColor`.
+  * Desde el filtro, ↑ ↓ RePág AvPág e Intro mueven la selección de la lista.
+* Autocompletar: cuando se elige un elemento (Intro o clic), el texto se escribe en el TextBox con `WM_SETTEXT` y se lanza `PostAutoComplete`.
+  * El texto asignado por código no vuelve a abrir la lista.
+  * Pulsar Tab después **no** reabre la lista en el TextBox anterior.
 
-## Proyecto de ejemplo (formularios)
+## Eventos
 
-Los 10 formularios de ejemplo están recreados en `Sources/Forms`. La disposición de
-los controles es la del `.frm` original, convertida a píxeles.
+`IndexChange`, `ItemClick`, `HideList`, `ScrollBottom`, `PostAutoComplete`, `DblClick`, `MouseDown/Move/Up`, `PostPaint(hdc)`, `ItemCustomDraw(...)`, `KeyPress`, `KeyUp`, `KeyDown`, `OLECompleteDrag`, `OLEDragDrop`, `OLEDragOver`, `OLEGiveFeedback`, `OLESetData` y `OLEStartDrag`.
 
-| Formulario | Qué muestra |
-|---|---|
-| `FrmMain` | Menú principal: lista que abre los demás ejemplos (**objeto de inicio**) |
-| `FrmAutocomplete` | Autocompletar varios `TextBox` y un `ucSelect` con lista de países |
-| `FrmComboBox` | Tres `ucSelect` encadenados (provincias/departamentos/localidades) con datos de una API |
-| `FrmCustomDraw` | Elementos dibujados a mano con el evento `ItemCustomDraw` |
-| `FrmDragDrop` | Arrastrar y soltar elementos entre dos listas (OLE) |
-| `FrmDropDownList` | Cinco listas desplegables lanzadas desde botones |
-| `FrmGoogleSearch` | Búsqueda de imágenes con autocompletado en tiempo real y dictado por voz |
-| `FrmListBox` | Cinco `ucList` con `ListStyle = StyleListBox` |
-| `FrmMenu` | Menús y submenús con `ListStyle = StyleMenu` |
-| `FrmShadow` | Uso de `ClsShadow` en un formulario sin bordes |
+Coordenadas de los eventos de ratón: píxeles de la ventana de la lista, que son los mismos que espera `ItemHitest`.
 
-### Cómo montarlo
-1. Crea un proyecto *Standard EXE* llamado **`ucListPlus`**. En los `.tbform`, los
-   controles de usuario se identifican como `ucListPlus.ucList` y
-   `ucListPlus.ucSelect`. Si tu proyecto tiene otro nombre, cambia ese prefijo en
-   los `.tbform` con buscar y reemplazar.
-2. Importa todos los archivos de `Sources` y de `Sources/Forms`.
-3. En *Project → Settings*, elige **`FrmMain`** como objeto de inicio.
-4. Copia junto al ejecutable (o en la carpeta del proyecto, que es `App.Path` al
-   depurar) los archivos de datos del ejemplo original. No están en este
-   repositorio: `VB6.png`, `Personal.txt`, `Nombres.txt`, `Groups.txt`,
-   `Country.txt` y las carpetas `Caras\` y `Vectores PNG\`. Copia también los dos
-   `.bmp` de `Demo/`.
+## Honestidad sobre la verificación
 
-### Propiedades de diseño de los `ucList`
-twinBASIC guarda las propiedades de un UserControl en un `.tbform` como un bloque
-binario (`_IPersistStreamData`) con un formato interno que no se puede generar de
-forma fiable a mano. Por eso los `.tbform` solo guardan la posición, el tamaño y la
-visibilidad de cada `ucList`/`ucSelect`. Las propiedades que en VB6 estaban en el `.frm`
-(`ListStyle`, colores, `ListWidth`, `OLEDropMode`, …) se aplican por código en
-`ApplyDesignProperties`, al principio de cada `Form_Load`.
+En el entorno donde se escribió este código **no hay compilador de twinBASIC ni Windows**, así que no se ha podido compilar ni ejecutar. Se comprobó de forma automática:
 
-Para que esto funcione, `ucList` tiene tres cambios:
-- En ejecución, `ListStyle` se puede asignar por código. Muestra u oculta el control
-  y no cambia su tamaño.
-- Si se crea sin propiedades guardadas (`InitProperties` en ejecución), arranca en
-  modo desplegable, oculto y sin los elementos de ejemplo.
-- En el diseñador ya no se fuerza el tamaño de 32×32 en los estilos desplegable y menú,
-  para que se mantenga la geometría del formulario.
+* el equilibrio de bloques (`If/For/Do/Select/With/Sub/Function/Property/Type/Enum`);
+* la cobertura de la API pública frente a `ucList.ctl` y `ClsShadow.cls` (no falta ningún miembro);
+* que las firmas coinciden con el original (solo cambian a `LongPtr` los handles);
+* que no hay identificadores sin declarar;
+* el envoltorio `Class/Module … End Class/Module`;
+* los saltos de línea CRLF y la validez del JSON del `.tbcontrol`.
 
-Si abres un formulario en el diseñador de twinBASIC y lo guardas, el IDE añadirá el
-bloque binario y a partir de ahí las propiedades se pueden editar también en la
-ventana de propiedades.
-
-### Otros cambios en los formularios
-- `FrmShadow`: el `CommonDialog` (`COMDLG32.OCX`) se reemplazó por la API
-  `ChooseColorW`, y las dos `Line` por `Label` de 1 píxel de alto.
-- `FrmGoogleSearch`: las imágenes del `.frx` se cargan en `Form_Load` desde
-  `GoogleSearch_Microphone.bmp` y `GoogleSearch_Search.bmp`. `mciSendString` y la
-  codificación base64 usan las versiones Unicode (`W`) de la API.
-- Todas las `Declare` de los formularios usan `PtrSafe`/`LongPtr`.
-- Se corrigieron pequeños errores del original: `EOF(1)` en lugar de `EOF(FF)`,
-  `.ListStyle = GoogleDesign` en lugar de `.ListDesign`, `CloseThemeData` que nunca
-  se llamaba y el radio de la región al cambiar el ancho en `FrmShadow`.
-
-## Qué cambió respecto a la versión VB6
-
-### Cambios necesarios para twinBASIC / 64 bits
-- Todas las `Declare` usan `PtrSafe` y `LongPtr` para handles y punteros.
-- **Subclasificación**: `clsSubClass` usaba thunks en código máquina de 32 bits,
-  que no funcionan en 64 bits. Ahora se usa `SetWindowSubclass`/`DefSubclassProc`
-  de comctl32 (`mUcListHelpers.twin`), tanto en `ucList` como en `ClsShadow`.
-- **Barra de desplazamiento**: `ucScrollbar` (también con thunks) se reemplazó por una
-  barra interna dibujada por el propio control:
-  - `ListDesign = GoogleDesign`: barra fina con *thumb* redondeado (igual que el
-    antiguo `ucScrollbar1_OnPaint`).
-  - `ListDesign = MicrosoftDesign`: barra con botones y tema de Windows (uxtheme), o
-    clásica si los temas están desactivados.
-  - Soporta arrastre del *thumb*, clic en la pista, botones con autorrepetición
-    y rueda del ratón.
-- **Timer1** se reemplazó por `SetTimer`/`WM_TIMER` sobre la ventana del control.
-- **Text1** (el `TextBox` del filtro) se reemplazó por un control `EDIT` de Win32
-  creado por código con `CreateWindowExW`:
-  - `EN_CHANGE` (vía `WM_COMMAND` al padre) dispara la lógica de `Text1_Change`.
-  - `WM_KEYDOWN`/`WM_CHAR` del EDIT se subclasifican y llaman a la lógica de
-    `Text1_KeyDown`/`Text1_KeyPress`. Si la tecla se consume, se descarta el `WM_CHAR`
-    para evitar el pitido.
-  - `WM_GETDLGCODE` pide flechas, Enter y Escape (en modo desplegable) para que no
-    los consuma el formulario. Tab sigue moviendo el foco.
-  - Los colores se aplican con `WM_CTLCOLOREDIT` y la fuente con `WM_SETFONT`.
-  - El EDIT solo existe en tiempo de ejecución. En diseño se dibuja solo el marco.
-- `VarPtrArray` (msvbvm60.dll, que no existe en 64 bits) se eliminó; las imágenes
-  desde arrays de bytes se cargan con `GlobalAlloc` + `CreateStreamOnHGlobal`.
-- La imagen de diseño (`ucList.ctx`) se sustituyó por un icono dibujado por código
-  en tiempo de diseño.
-
-### Cambios en tipos de la interfaz pública (por 64 bits)
-Estos cambios no afectan al código en 32 bits:
-- `hWnd` devuelve `LongPtr`.
-- `AutoCompleteTextBox(oTextBox As LongPtr, ...)`.
-- Eventos `PostPaint(ByVal hdc As LongPtr)` e
-  `ItemCustomDraw(Index, ByVal hdc As LongPtr, Left, Top, Width, Height)`.
-- `ImageListDraw(ByVal hdc As LongPtr, ...)`.
-- `ImageListAddImage` acepta también handles `LongLong` (HBITMAP/HICON en 64 bits).
-
-### Correcciones tras las pruebas
-- **`ucSelect` no mostraba el elemento elegido.** El original pintaba el texto en
-  `UserControl_Paint` con `AutoRedraw = False` y dependía de que `Refresh` provocara
-  `Paint`. En twinBASIC ese repintado no se veía. Ahora pinta igual que `ucList`, con
-  `AutoRedraw = True` (`DrawContent` + `Refresh`).
-- **Una lista desplegable volvía a aparecer donde se había abierto la vez anterior.**
-  Pasaba al cambiar con Tab a otro `TextBox` con `AutoCompleteTextBox`.
-  `AutoCompleteTextBox` y `ShowList` vacían el filtro, lo que ejecuta `Text1_Change`.
-  Con la lista cerrada, esa rutina redimensionaba el popup y llamaba a
-  `cShadow.Refresh`, que vuelve a mostrar la sombra en las coordenadas antiguas.
-  Además, si la lista se había abierto por encima del campo, llamaba a
-  `SetWindowPos … SWP_SHOWWINDOW`, que mostraba la propia lista. Ahora, con la lista
-  cerrada, solo se reinicia el filtro. `Update` tampoco reactiva la sombra de una
-  lista desplegable cerrada.
-- En `Draw`, los eventos `ItemCustomDraw` y `PostPaint` reciben explícitamente el
-  `hDC` del control.
-- **(2ª ronda) La lista seguía abriéndose en el `TextBox` anterior tras Enter + Tab.**
-  En twinBASIC el `TextBox` recibe también el `WM_CHAR` del Tabulador (en VB6 el
-  formulario se lo quedaba). El original solo ignoraba Enter (13), así que el Tab se
-  trataba como si se hubiera escrito algo. Con la lista cerrada, se buscaba otra vez
-  el texto recién elegido y la lista se abría en ese `TextBox`, el anterior, justo
-  antes de pasar el foco al siguiente. Ahora el `WM_CHAR` del `TextBox` origen solo se
-  procesa si ese `TextBox` tiene el foco, si es un carácter imprimible o Backspace, y
-  si el texto realmente cambió.
-- **(2ª ronda) `ucSelect` seguía sin mostrar la opción elegida.** Ahora el `ucList`
-  interno avisa directamente al `ucSelect` mediante la interfaz `IUcListNotify`
-  (`Sources/IUcListNotify.twin`), justo antes de cada `ItemClick`/`IndexChange`. Ya no
-  depende de que twinBASIC entregue los eventos de un UserControl anidado al
-  UserControl que lo contiene. El texto se pinta con `AutoRedraw` (`DrawContent`).
-
-#- **(3ª ronda) Al hacer clic en una lista desplegable o menú no se devolvía nada**
-  (FrmDropDownList, FrmMenu y también `ucSelect`). La lista se cerraba mientras el
-  botón seguía pulsado, antes del `MouseUp` que lanza `ItemClick`:
-  - El temporizador decide si el clic fue "fuera" comparando
-    `WindowFromPoint(cursor)` con `UserControl.hWnd`. En twinBASIC esa comparación
-    puede fallar aunque el clic sea dentro, y entonces se ejecutaba `HideList`. Ahora
-    se compara la posición del cursor con el rectángulo de la ventana.
-  - En estilo DropDown, cualquier `WM_IME_SETCONTEXT` cerraba la lista, y el propio
-    clic que le da el foco genera uno. Ahora solo se cierra cuando pierde la
-    activación (`wParam = 0`).
-  - Si un `WM_MOUSELEAVE` espurio había borrado el elemento bajo el cursor,
-    `MouseDown`/`MouseUp` lo calculan de nuevo a partir de Y.
-  - Con `ShowFilter`, al abrir la lista el foco pasa al cuadro de filtro, como hacía
-    VB6 con `Text1`.
-  - Los manejadores de eventos de `ucList`/`ucSelect` en los formularios llevan
-    `Handles control.Evento` explícito, la misma sintaxis que genera el IDE de
-    twinBASIC.
-
-## Errores del original corregidos
-- `BSort SortAscendant` ordenaba en forma descendente (las dos ramas eran iguales).
-- `SelectionRadius` marcaba como modificada la propiedad `ImagesRadius`.
-- `AddItem` con `Index` dejaba restos del elemento desplazado en el nuevo
-  (`IsGroup`, `SubMenu`, `ItemBold`).
-- `RemoveItem` no actualizaba el contador de separadores y no comprobaba el rango.
-- `ItemSelected` (Get) redibujaba el control innecesariamente.
-- El evento `PostPaint` estaba declarado pero nunca se disparaba; ahora se dispara
-  al terminar cada repintado.
-
-## Notas
-- Formato de los archivos: los `.twin`, `.tbform` y `.tbcontrol` usan saltos de línea
-  CR+LF (`\r\n`), igual que los que genera el IDE de twinBASIC. Formularios, clases y
-  UserControls están dentro de `Class Nombre … End Class` y el módulo dentro de
-  `Module Nombre … End Module`. Cada formulario va acompañado de su `.tbform` y cada
-  UserControl de su `.tbcontrol`, que es la extensión que usa twinBASIC para el
-  diseñador de los controles de usuario.
-- Este código no se pudo compilar en el entorno en que se convirtió, porque
-  twinBASIC solo funciona en Windows. Si al importarlo aparece algún error de
-  compilación, suele bastar con ajustes menores.
-- Los `.tbform` se generaron a partir de los `.frm` originales. El CLSID del
-  `PictureBox` (`{33AD4ED0-6699-11CF-B70C-00AA0060D393}`) se dedujo de la secuencia de
-  GUID de los controles de VB6 y no se pudo comprobar en un `.tbform` real. Si
-  twinBASIC no reconoce los `PictureBox` al abrir un formulario, borra y vuelve a
-  añadir esos controles en el diseñador con el mismo nombre e índice.
+Además se repasaron a mano los escenarios de foco, teclado y ratón descritos arriba.
+Si al compilar aparece algún error, indícame la línea y el mensaje.

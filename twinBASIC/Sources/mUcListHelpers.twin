@@ -1,60 +1,305 @@
 Module mUcListHelpers
-    '-------------------------
-    'Name: mUcListHelpers
-    'Modulo auxiliar de ucList / ClsShadow para twinBASIC.
-    'Reemplaza a clsSubClass (thunks en ensamblador, solo 32 bits) por
-    'SetWindowSubclass de comctl32, que funciona en 32 y 64 bits.
-    '--------------------------
+
+    '==========================================================================
+    ' mUcListHelpers - infraestructura comun de ucList y ClsShadow (twinBASIC)
+    '
+    '  - Clase de ventana "ucListPlusWnd" (lista y sombras).
+    '  - Subclasificacion con SetWindowSubclass (comctl32), 32 y 64 bits.
+    '  - GDI+ con contador de referencias.
+    '  - Pila de listas desplegables abiertas + ganchos (hooks) de teclado y
+    '    raton del HILO mientras haya alguna abierta. Los ganchos solo deciden y
+    '    publican mensajes (PostMessage); la logica se ejecuta despues, fuera
+    '    del gancho.
+    '==========================================================================
 
     Option Explicit
 
-    ' Se usan los ordinales para que funcione tambien con comctl32 v5.8x
     Private Declare PtrSafe Function SetWindowSubclass Lib "comctl32" Alias "#410" (ByVal hWnd As LongPtr, ByVal pfnSubclass As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As LongPtr) As Long
     Private Declare PtrSafe Function RemoveWindowSubclass Lib "comctl32" Alias "#412" (ByVal hWnd As LongPtr, ByVal pfnSubclass As LongPtr, ByVal uIdSubclass As LongPtr) As Long
     Private Declare PtrSafe Function DefSubclassProc Lib "comctl32" Alias "#413" (ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+    Private Declare PtrSafe Function SetWindowsHookExW Lib "user32" (ByVal idHook As Long, ByVal lpfn As LongPtr, ByVal hmod As LongPtr, ByVal dwThreadId As Long) As LongPtr
+    Private Declare PtrSafe Function UnhookWindowsHookEx Lib "user32" (ByVal hhk As LongPtr) As Long
+    Private Declare PtrSafe Function CallNextHookEx Lib "user32" (ByVal hhk As LongPtr, ByVal nCode As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+    Private Declare PtrSafe Function GetCurrentThreadId Lib "kernel32" () As Long
+    Private Declare PtrSafe Function RegisterClassExW Lib "user32" (ByRef lpwcx As WNDCLASSEXW) As Integer
+    Private Declare PtrSafe Function GetClassInfoExW Lib "user32" (ByVal hInstance As LongPtr, ByVal lpszClass As LongPtr, ByRef lpwcx As WNDCLASSEXW) As Long
+    Private Declare PtrSafe Function DefWindowProcW Lib "user32" (ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+    Private Declare PtrSafe Function LoadCursorW Lib "user32" (ByVal hInstance As LongPtr, ByVal lpCursorName As LongPtr) As LongPtr
+    Private Declare PtrSafe Function GdiplusStartup Lib "gdiplus" (ByRef token As LongPtr, ByRef inputbuf As GDIPLUSSTARTUPINPUT, ByVal outputbuf As LongPtr) As Long
+    Private Declare PtrSafe Sub GdiplusShutdown Lib "gdiplus" (ByVal token As LongPtr)
+    Private Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (ByRef Destination As Any, ByRef Source As Any, ByVal Length As LongPtr)
 
-    '---- ucList ----
-    Public Function UCL_SubclassList(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As LongPtr) As Boolean
-        UCL_SubclassList = SetWindowSubclass(hWnd, AddressOf UCL_ListProc, uIdSubclass, dwRefData) <> 0
+    Private Type WNDCLASSEXW
+        cbSize          As Long
+        style           As Long
+        lpfnWndProc     As LongPtr
+        cbClsExtra      As Long
+        cbWndExtra      As Long
+        hInstance       As LongPtr
+        hIcon           As LongPtr
+        hCursor         As LongPtr
+        hbrBackground   As LongPtr
+        lpszMenuName    As LongPtr
+        lpszClassName   As LongPtr
+        hIconSm         As LongPtr
+    End Type
+
+    Private Type GDIPLUSSTARTUPINPUT
+        GdiplusVersion              As Long
+        DebugEventCallback          As LongPtr
+        SuppressBackgroundThread    As Long
+        SuppressExternalCodecs      As Long
+    End Type
+
+    Public Const UCL_CLASSNAME  As String = "ucListPlusWnd"
+
+    Private Const CS_DBLCLKS    As Long = &H8
+    Private Const IDC_ARROW     As Long = 32512
+    Private Const WH_KEYBOARD   As Long = 2
+    Private Const WH_MOUSE      As Long = 7
+    Private Const HC_ACTION     As Long = 0
+
+    Private Const WM_MOUSEWHEEL     As Long = &H20A
+    Private Const WM_LBUTTONDOWN    As Long = &H201
+    Private Const WM_LBUTTONDBLCLK  As Long = &H203
+    Private Const WM_RBUTTONDOWN    As Long = &H204
+    Private Const WM_RBUTTONDBLCLK  As Long = &H206
+    Private Const WM_MBUTTONDOWN    As Long = &H207
+    Private Const WM_MBUTTONDBLCLK  As Long = &H209
+    Private Const WM_XBUTTONDOWN    As Long = &H20B
+    Private Const WM_XBUTTONDBLCLK  As Long = &H20D
+    Private Const WM_NCLBUTTONDOWN  As Long = &HA1
+    Private Const WM_NCLBUTTONDBLCLK As Long = &HA3
+    Private Const WM_NCRBUTTONDOWN  As Long = &HA4
+    Private Const WM_NCRBUTTONDBLCLK As Long = &HA6
+    Private Const WM_NCMBUTTONDOWN  As Long = &HA7
+    Private Const WM_NCMBUTTONDBLCLK As Long = &HA9
+    Private Const WM_NCXBUTTONDOWN  As Long = &HAB
+    Private Const WM_NCXBUTTONDBLCLK As Long = &HAD
+
+    Private m_ClassRegistered   As Boolean
+    Private m_GdipToken         As LongPtr
+    Private m_GdipRefs          As Long
+
+    Private m_Pops()            As LongPtr   'ucList abiertas (ObjPtr), la ultima recibe el teclado
+    Private m_PopCount          As Long
+    Private m_hKbdHook          As LongPtr
+    Private m_hMouseHook        As LongPtr
+
+    '--------------------------------------------------------------------------
+    ' Clase de ventana
+    '--------------------------------------------------------------------------
+    Public Function UCL_RegisterClass(ByVal hInstance As LongPtr) As Boolean
+        Dim wc As WNDCLASSEXW
+        Dim sName As String
+        If m_ClassRegistered Then UCL_RegisterClass = True: Exit Function
+        sName = UCL_CLASSNAME
+        #If Win64 Then
+            wc.cbSize = 80
+        #Else
+            wc.cbSize = 48
+        #End If
+        If GetClassInfoExW(hInstance, StrPtr(sName), wc) <> 0 Then
+            m_ClassRegistered = True
+            UCL_RegisterClass = True
+            Exit Function
+        End If
+        #If Win64 Then
+            wc.cbSize = 80
+        #Else
+            wc.cbSize = 48
+        #End If
+        wc.style = CS_DBLCLKS
+        wc.lpfnWndProc = AddressOf UCL_ClassWndProc
+        wc.hInstance = hInstance
+        wc.hCursor = LoadCursorW(0, IDC_ARROW)
+        wc.lpszClassName = StrPtr(sName)
+        m_ClassRegistered = (RegisterClassExW(wc) <> 0)
+        UCL_RegisterClass = m_ClassRegistered
     End Function
 
-    Public Sub UCL_UnsubclassList(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr)
-        RemoveWindowSubclass hWnd, AddressOf UCL_ListProc, uIdSubclass
+    ' Procedimiento de la clase: el comportamiento real se anade con SetWindowSubclass.
+    Public Function UCL_ClassWndProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+        UCL_ClassWndProc = DefWindowProcW(hWnd, uMsg, wParam, lParam)
+    End Function
+
+    '--------------------------------------------------------------------------
+    ' Subclasificacion
+    '--------------------------------------------------------------------------
+    Public Function UCL_SubclassList(ByVal hWnd As LongPtr, ByVal pObj As LongPtr) As Boolean
+        UCL_SubclassList = SetWindowSubclass(hWnd, AddressOf UCL_ListProc, pObj, pObj) <> 0
+    End Function
+
+    Public Sub UCL_UnsubclassList(ByVal hWnd As LongPtr, ByVal pObj As LongPtr)
+        RemoveWindowSubclass hWnd, AddressOf UCL_ListProc, pObj
     End Sub
 
     Public Function UCL_ListProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As ucList) As LongPtr
-        UCL_ListProc = dwRefData.zzSubclassProc(hWnd, uMsg, wParam, lParam, uIdSubclass)
+        UCL_ListProc = dwRefData.zzWndProc(hWnd, uMsg, wParam, lParam)
     End Function
 
-    '---- ClsShadow ----
-    Public Function UCL_SubclassShadow(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As LongPtr) As Boolean
-        UCL_SubclassShadow = SetWindowSubclass(hWnd, AddressOf UCL_ShadowProc, uIdSubclass, dwRefData) <> 0
+    Public Function UCL_SubclassShadow(ByVal hWnd As LongPtr, ByVal pObj As LongPtr) As Boolean
+        UCL_SubclassShadow = SetWindowSubclass(hWnd, AddressOf UCL_ShadowProc, pObj, pObj) <> 0
     End Function
 
-    Public Sub UCL_UnsubclassShadow(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr)
-        RemoveWindowSubclass hWnd, AddressOf UCL_ShadowProc, uIdSubclass
+    Public Sub UCL_UnsubclassShadow(ByVal hWnd As LongPtr, ByVal pObj As LongPtr)
+        RemoveWindowSubclass hWnd, AddressOf UCL_ShadowProc, pObj
     End Sub
 
     Public Function UCL_ShadowProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As ClsShadow) As LongPtr
-        UCL_ShadowProc = dwRefData.zzSubclassProc(hWnd, uMsg, wParam, lParam, uIdSubclass)
+        UCL_ShadowProc = dwRefData.zzWndProc(hWnd, uMsg, wParam, lParam)
     End Function
 
-    '---- ucSelect ----
-    Public Function UCL_SubclassSelect(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As LongPtr) As Boolean
-        UCL_SubclassSelect = SetWindowSubclass(hWnd, AddressOf UCL_SelectProc, uIdSubclass, dwRefData) <> 0
-    End Function
-
-    Public Sub UCL_UnsubclassSelect(ByVal hWnd As LongPtr, ByVal uIdSubclass As LongPtr)
-        RemoveWindowSubclass hWnd, AddressOf UCL_SelectProc, uIdSubclass
-    End Sub
-
-    Public Function UCL_SelectProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr, ByVal uIdSubclass As LongPtr, ByVal dwRefData As ucSelect) As LongPtr
-        UCL_SelectProc = dwRefData.zzSubclassProc(hWnd, uMsg, wParam, lParam, uIdSubclass)
-    End Function
-
-    '---- comun ----
     Public Function UCL_DefProc(ByVal hWnd As LongPtr, ByVal uMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
         UCL_DefProc = DefSubclassProc(hWnd, uMsg, wParam, lParam)
+    End Function
+
+    '--------------------------------------------------------------------------
+    ' GDI+
+    '--------------------------------------------------------------------------
+    Public Sub UCL_GdipStart()
+        Dim si As GDIPLUSSTARTUPINPUT
+        If m_GdipRefs = 0 Then
+            si.GdiplusVersion = 1
+            If GdiplusStartup(m_GdipToken, si, 0) <> 0 Then m_GdipToken = 0
+        End If
+        m_GdipRefs = m_GdipRefs + 1
+    End Sub
+
+    Public Sub UCL_GdipStop()
+        If m_GdipRefs = 0 Then Exit Sub
+        m_GdipRefs = m_GdipRefs - 1
+        If m_GdipRefs = 0 Then
+            If m_GdipToken <> 0 Then GdiplusShutdown m_GdipToken
+            m_GdipToken = 0
+        End If
+    End Sub
+
+    '--------------------------------------------------------------------------
+    ' Pila de listas desplegables abiertas
+    '--------------------------------------------------------------------------
+    ' Referencia a un ucList a partir de su ObjPtr, sin crear referencias fuertes
+    ' en la pila (se libera al salir de la funcion que la usa).
+    Private Function ListFromPtr(ByVal p As LongPtr) As ucList
+        Dim o As ucList
+        Dim pZero As LongPtr
+        If p = 0 Then Exit Function
+        CopyMemory o, p, LenB(p)
+        Set ListFromPtr = o
+        CopyMemory o, pZero, LenB(pZero)
+    End Function
+
+    Public Sub UCL_PopupAdd(ByVal p As LongPtr)
+        UCL_PopupRemove p
+        If m_PopCount = 0 Then ReDim m_Pops(0 To 7)
+        If m_PopCount > UBound(m_Pops) Then ReDim Preserve m_Pops(0 To m_PopCount * 2)
+        m_Pops(m_PopCount) = p
+        m_PopCount = m_PopCount + 1
+        If m_PopCount = 1 Then
+            m_hKbdHook = SetWindowsHookExW(WH_KEYBOARD, AddressOf UCL_KbdHookProc, 0, GetCurrentThreadId())
+            m_hMouseHook = SetWindowsHookExW(WH_MOUSE, AddressOf UCL_MouseHookProc, 0, GetCurrentThreadId())
+        End If
+    End Sub
+
+    Public Sub UCL_PopupRemove(ByVal p As LongPtr)
+        Dim i As Long, j As Long
+        For i = m_PopCount - 1 To 0 Step -1
+            If m_Pops(i) = p Then
+                For j = i To m_PopCount - 2
+                    m_Pops(j) = m_Pops(j + 1)
+                Next
+                m_PopCount = m_PopCount - 1
+            End If
+        Next
+        If m_PopCount = 0 Then
+            If m_hKbdHook <> 0 Then UnhookWindowsHookEx m_hKbdHook: m_hKbdHook = 0
+            If m_hMouseHook <> 0 Then UnhookWindowsHookEx m_hMouseHook: m_hMouseHook = 0
+        End If
+    End Sub
+
+    ' Lista desplegable que tiene el "foco logico" del teclado (la ultima abierta)
+    Public Function UCL_PopupTop() As LongPtr
+        If m_PopCount > 0 Then UCL_PopupTop = m_Pops(m_PopCount - 1)
+    End Function
+
+    '--------------------------------------------------------------------------
+    ' Ganchos
+    '--------------------------------------------------------------------------
+    Public Function UCL_KbdHookProc(ByVal nCode As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+        Dim o As ucList
+        Dim bSwallow As Boolean
+        If nCode >= 0 And m_PopCount > 0 Then
+            Set o = ListFromPtr(m_Pops(m_PopCount - 1))
+            If Not o Is Nothing Then bSwallow = o.zzHookKey(nCode = HC_ACTION, CLng(wParam And &HFFFF&), lParam)
+            Set o = Nothing
+            If bSwallow Then
+                UCL_KbdHookProc = 1
+                Exit Function
+            End If
+        End If
+        UCL_KbdHookProc = CallNextHookEx(m_hKbdHook, nCode, wParam, lParam)
+    End Function
+
+    Public Function UCL_MouseHookProc(ByVal nCode As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As LongPtr
+        Dim o As ucList
+        Dim lMsg As Long, i As Long
+        Dim hTarget As LongPtr
+        Dim ptX As Long, ptY As Long
+        Dim bOwned As Boolean
+        Dim lMouseData As Long
+        Dim lPtr As Long, lHitOff As Long, lExtraOff As Long
+
+        If nCode = HC_ACTION And m_PopCount > 0 And lParam <> 0 Then
+            lMsg = CLng(wParam And &HFFFF&)
+            ' MOUSEHOOKSTRUCT(EX): POINT pt; HWND hwnd; UINT wHitTestCode; ULONG_PTR dwExtraInfo; DWORD mouseData
+            lPtr = LenB(hTarget)
+            CopyMemory ptX, ByVal lParam, 4
+            CopyMemory ptY, ByVal (lParam + 4), 4
+            CopyMemory hTarget, ByVal (lParam + 8), lPtr
+            Select Case lMsg
+                Case WM_LBUTTONDOWN, WM_LBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONDBLCLK, _
+                     WM_MBUTTONDOWN, WM_MBUTTONDBLCLK, WM_XBUTTONDOWN, WM_XBUTTONDBLCLK, _
+                     WM_NCLBUTTONDOWN, WM_NCLBUTTONDBLCLK, WM_NCRBUTTONDOWN, WM_NCRBUTTONDBLCLK, _
+                     WM_NCMBUTTONDOWN, WM_NCMBUTTONDBLCLK, WM_NCXBUTTONDOWN, WM_NCXBUTTONDBLCLK
+                    ' Clic: si no es dentro de ninguna lista abierta, cerrarlas todas.
+                    ' El cierre se PUBLICA: el clic llega primero a su destino (asi un
+                    ' boton puede comprobar IsListVisible en su MouseDown).
+                    For i = m_PopCount - 1 To 0 Step -1
+                        Set o = ListFromPtr(m_Pops(i))
+                        If Not o Is Nothing Then
+                            If o.zzOwnsWindow(hTarget) Then bOwned = True
+                        End If
+                        Set o = Nothing
+                        If bOwned Then Exit For
+                    Next
+                    If Not bOwned Then
+                        For i = m_PopCount - 1 To 0 Step -1
+                            Set o = ListFromPtr(m_Pops(i))
+                            If Not o Is Nothing Then o.zzRequestClose
+                            Set o = Nothing
+                        Next
+                    End If
+
+                Case WM_MOUSEWHEEL
+                    ' La rueda va a la ventana con el foco (no a la lista, que no lo
+                    ' toma). Si el cursor esta sobre una lista abierta, se le envia a ella.
+                    lHitOff = 8 + lPtr
+                    lExtraOff = ((lHitOff + 4 + lPtr - 1) \ lPtr) * lPtr
+                    CopyMemory lMouseData, ByVal (lParam + lExtraOff + lPtr), 4
+                    For i = m_PopCount - 1 To 0 Step -1
+                        Set o = ListFromPtr(m_Pops(i))
+                        If Not o Is Nothing Then
+                            If o.zzHookWheel(hTarget, ptX, ptY, lMouseData) Then
+                                Set o = Nothing
+                                UCL_MouseHookProc = 1
+                                Exit Function
+                            End If
+                        End If
+                        Set o = Nothing
+                    Next
+            End Select
+        End If
+        UCL_MouseHookProc = CallNextHookEx(m_hMouseHook, nCode, wParam, lParam)
     End Function
 
 End Module
