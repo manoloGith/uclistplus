@@ -70,7 +70,7 @@ Class FrmCustomDraw
         Example1
     End Sub
 
-    Private Sub ucList1_ItemClick()
+    Private Sub ucList1_ItemClick() Handles ucList1.ItemClick
         Dim i As Long
         Dim lStart As Long
         If ucList1.ItemData(ucList1.ListIndex) = 1 Then
@@ -96,7 +96,7 @@ Class FrmCustomDraw
         ucList1.Update
     End Sub
 
-    Private Sub ucList1_ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long)
+    Private Sub ucList1_ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long) Handles ucList1.ItemCustomDraw
         Dim tR As RECT
         Dim hBrush As LongPtr
 

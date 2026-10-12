@@ -80,7 +80,7 @@ Class FrmListBox
         Me.BackColor = RndColor
     End Sub
 
-    Private Sub ucList1_IndexChange()
+    Private Sub ucList1_IndexChange() Handles ucList1.IndexChange
         Me.Caption = ucList1.ItemText(ucList1.ListIndex)
     End Sub
     '============== FIN EJEMPLO1
@@ -113,7 +113,7 @@ Class FrmListBox
         End With
     End Sub
 
-    Private Sub ucList2_ItemClick()
+    Private Sub ucList2_ItemClick() Handles ucList2.ItemClick
         Me.Caption = ucList2.ItemText(ucList2.ListIndex)
     End Sub
     '============== FIN EJEMPLO2
@@ -148,7 +148,7 @@ Class FrmListBox
 
     End Sub
 
-    Private Sub ucList3_ItemClick()
+    Private Sub ucList3_ItemClick() Handles ucList3.ItemClick
         Dim i As Long, lCount As Long
         Dim GroupIndex As Long
 
@@ -186,7 +186,7 @@ Class FrmListBox
         End With
     End Sub
 
-    Private Sub ucList4_ItemClick()
+    Private Sub ucList4_ItemClick() Handles ucList4.ItemClick
         Me.Caption = ucList4.ItemText(ucList4.ListIndex)
     End Sub
     '============== FIN EJEMPLO4
@@ -216,7 +216,7 @@ Class FrmListBox
         End With
     End Sub
 
-    Private Sub ucList5_ItemClick()
+    Private Sub ucList5_ItemClick() Handles ucList5.ItemClick
         Dim i As Long, lCount As Long
         For i = 0 To ucList5.ListCount - 1
             If ucList5.ItemSelected(i) Then

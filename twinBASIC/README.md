@@ -182,7 +182,25 @@ Estos cambios no afectan al código en 32 bits:
   depende de que twinBASIC entregue los eventos de un UserControl anidado al
   UserControl que lo contiene. El texto se pinta con `AutoRedraw` (`DrawContent`).
 
-### Errores del original corregidos
+#- **(3ª ronda) Al hacer clic en una lista desplegable o menú no se devolvía nada**
+  (FrmDropDownList, FrmMenu y también `ucSelect`). La lista se cerraba mientras el
+  botón seguía pulsado, antes del `MouseUp` que lanza `ItemClick`:
+  - El temporizador decide si el clic fue "fuera" comparando
+    `WindowFromPoint(cursor)` con `UserControl.hWnd`. En twinBASIC esa comparación
+    puede fallar aunque el clic sea dentro, y entonces se ejecutaba `HideList`. Ahora
+    se compara la posición del cursor con el rectángulo de la ventana.
+  - En estilo DropDown, cualquier `WM_IME_SETCONTEXT` cerraba la lista, y el propio
+    clic que le da el foco genera uno. Ahora solo se cierra cuando pierde la
+    activación (`wParam = 0`).
+  - Si un `WM_MOUSELEAVE` espurio había borrado el elemento bajo el cursor,
+    `MouseDown`/`MouseUp` lo calculan de nuevo a partir de Y.
+  - Con `ShowFilter`, al abrir la lista el foco pasa al cuadro de filtro, como hacía
+    VB6 con `Text1`.
+  - Los manejadores de eventos de `ucList`/`ucSelect` en los formularios llevan
+    `Handles control.Evento` explícito, la misma sintaxis que genera el IDE de
+    twinBASIC.
+
+## Errores del original corregidos
 - `BSort SortAscendant` ordenaba en forma descendente (las dos ramas eran iguales).
 - `SelectionRadius` marcaba como modificada la propiedad `ImagesRadius`.
 - `AddItem` con `Index` dejaba restos del elemento desplazado en el nuevo

@@ -138,15 +138,15 @@ Class FrmMenu
         End With
     End Sub
 
-    Private Sub ucList1_ItemClick()
+    Private Sub ucList1_ItemClick() Handles ucList1.ItemClick
         Me.Caption = ucList1.ItemText(ucList1.ListIndex)
     End Sub
 
-    Private Sub ucList2_ItemClick()
+    Private Sub ucList2_ItemClick() Handles ucList2.ItemClick
         Me.Caption = ucList2.ItemText(ucList2.ListIndex)
     End Sub
 
-    Private Sub ucList3_ItemClick()
+    Private Sub ucList3_ItemClick() Handles ucList3.ItemClick
         Me.Caption = ucList3.ItemText(ucList3.ListIndex)
     End Sub
 

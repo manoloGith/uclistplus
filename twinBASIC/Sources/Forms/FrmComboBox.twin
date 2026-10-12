@@ -45,7 +45,7 @@ Class FrmComboBox
         End If
     End Sub
 
-    Private Sub SelectProvincias_ItemClick()
+    Private Sub SelectProvincias_ItemClick() Handles SelectProvincias.ItemClick
         Dim JB As JsonBag
         Dim ID As String, i As Long
 
@@ -65,7 +65,7 @@ Class FrmComboBox
         End If
     End Sub
 
-    Private Sub SelectDepartamentos_ItemClick()
+    Private Sub SelectDepartamentos_ItemClick() Handles SelectDepartamentos.ItemClick
         Dim JB As JsonBag
         Dim ID As String, i As Long
 

@@ -52,7 +52,7 @@ Class FrmDragDrop
         DragPos2 = -2
     End Sub
 
-    Private Sub ucList1_ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long)
+    Private Sub ucList1_ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long) Handles ucList1.ItemCustomDraw
         If Not CtlID = 1 Then
             If DragPos1 = -1 And Index = ucList1.ListCount - 1 Then
                 DrawLine hdc, 0, Top + Height, Width - 2, Top + Height, vbRed, 1
@@ -62,12 +62,12 @@ Class FrmDragDrop
         End If
     End Sub
 
-    Private Sub ucList1_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+    Private Sub ucList1_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single) Handles ucList1.MouseDown
         If ucList1.ListIndex = -1 Then Exit Sub
         ucList1.OLEDrag
     End Sub
 
-    Private Sub ucList1_OLEDragOver(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single, State As Integer)
+    Private Sub ucList1_OLEDragOver(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single, State As Integer) Handles ucList1.OLEDragOver
         If State = vbLeave Then
             DragPos1 = -2
         Else
@@ -76,14 +76,14 @@ Class FrmDragDrop
         ucList1.Refresh
     End Sub
 
-    Private Sub ucList1_OLEStartDrag(Data As DataObject, AllowedEffects As Long)
+    Private Sub ucList1_OLEStartDrag(Data As DataObject, AllowedEffects As Long) Handles ucList1.OLEStartDrag
         AllowedEffects = vbDropEffectMove
         CtlID = 1
         DragPos2 = -2
         Data.SetData ucList1.Text
     End Sub
 
-    Private Sub ucList2_ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long)
+    Private Sub ucList2_ItemCustomDraw(Index As Long, ByVal hdc As LongPtr, Left As Long, Top As Long, Width As Long, Height As Long) Handles ucList2.ItemCustomDraw
         If Not CtlID = 2 Then
             If DragPos2 = -1 And Index = ucList2.ListCount - 1 Then
                 DrawLine hdc, 0, Top + Height, Width - 2, Top + Height, vbRed, 1
@@ -93,7 +93,7 @@ Class FrmDragDrop
         End If
     End Sub
 
-    Private Sub ucList2_OLEDragDrop(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single)
+    Private Sub ucList2_OLEDragDrop(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single) Handles ucList2.OLEDragDrop
         Dim strList As String
         If Not Data.GetFormat(vbCFText) Then Exit Sub
         strList = Data.GetData(vbCFText)
@@ -107,7 +107,7 @@ Class FrmDragDrop
         End If
     End Sub
 
-    Private Sub ucList2_OLEDragOver(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single, State As Integer)
+    Private Sub ucList2_OLEDragOver(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single, State As Integer) Handles ucList2.OLEDragOver
         If State = vbLeave Then
             DragPos2 = -2
         Else
@@ -116,12 +116,12 @@ Class FrmDragDrop
         ucList2.Refresh
     End Sub
 
-    Private Sub ucList2_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+    Private Sub ucList2_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single) Handles ucList2.MouseDown
         If ucList2.ListIndex = -1 Then Exit Sub
         ucList2.OLEDrag    ' Comienza el arrastre
     End Sub
 
-    Private Sub ucList2_OLEStartDrag(Data As DataObject, AllowedEffects As Long)
+    Private Sub ucList2_OLEStartDrag(Data As DataObject, AllowedEffects As Long) Handles ucList2.OLEStartDrag
         ' Solo permitir mover
         AllowedEffects = vbDropEffectMove
         CtlID = 2
@@ -129,7 +129,7 @@ Class FrmDragDrop
         Data.SetData ucList2.Text
     End Sub
 
-    Private Sub ucList1_OLEDragDrop(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single)
+    Private Sub ucList1_OLEDragDrop(Data As DataObject, Effect As Long, Button As Integer, Shift As Integer, X As Single, Y As Single) Handles ucList1.OLEDragDrop
         Dim strList As String
         ' Comprobar el formato del DataObject
         If Not Data.GetFormat(vbCFText) Then Exit Sub

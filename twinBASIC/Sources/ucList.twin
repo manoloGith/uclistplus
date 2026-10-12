@@ -92,7 +92,6 @@ Class ucList
     Private Declare PtrSafe Function GdipSetClipPath Lib "gdiplus" (ByVal mGraphics As LongPtr, ByVal mpath As LongPtr, ByVal mCombineMode As Long) As Long
     Private Declare PtrSafe Function GdipResetClip Lib "gdiplus" (ByVal mGraphics As LongPtr) As Long
     Private Declare PtrSafe Function TrackMouseEvent Lib "user32" (ByRef lpEventTrack As TRACKMOUSEEVENTTYPE) As Long
-    Private Declare PtrSafe Function WindowFromPoint Lib "user32" (ByVal Point As LongLong) As LongPtr
     Private Declare PtrSafe Function GetCursorPos Lib "user32" (ByRef lpPoint As POINTAPI) As Long
     Private Declare PtrSafe Function GetAsyncKeyState Lib "user32" (ByVal vKey As Long) As Integer
     Private Declare PtrSafe Function GetAncestor Lib "user32" (ByVal hWnd As LongPtr, ByVal gaFlags As Long) As LongPtr
@@ -1158,6 +1157,9 @@ Class ucList
         SetParent UserControl.hWnd, 0
         SetWindowPos UserControl.hWnd, HWND_TOPMOST, Left, Top, m_ListWidth * DpiFactor, WinHeight, SWP_NOACTIVATE Or SWP_SHOWWINDOW
         PutFocus UserControl.hWnd
+        ' En VB6 el UserControl pasaba el foco a su TextBox Text1; el EDIT creado por
+        ' codigo no lo recibe solo, asi que se le da aqui cuando hay filtro.
+        If m_ShowFilter And m_hEdit <> 0 Then PutFocus m_hEdit
 
         If m_ShowFilter Then
             Edit_Move lMargin * 2, lMargin * 2, UserControl.ScaleWidth - lMargin * 4 - 16 * DpiFactor
@@ -1757,7 +1759,6 @@ Class ucList
     End Sub
 
     Private Sub Timer1_Timer()
-        Dim hwin As LongPtr
         Dim PT As POINTAPI
 
         '------------------
@@ -1789,8 +1790,7 @@ Class ucList
 
         If isWinChild Then
             GetCursorPos PT
-            hwin = WindowFromPointXY(PT)
-            If hwin <> UserControl.hWnd Then
+            If Not PointInWindow(UserControl.hWnd, PT) Then
                 m_HotItem = -1
                 SB.HotPart = sbpNone
                 Timer1_SetInterval 0
@@ -1799,13 +1799,17 @@ Class ucList
         Else
 
             If (GetAsyncKeyState(vbLeftButton) < 0) Or (GetAsyncKeyState(vbRightButton) < 0) Then
+                ' Clic fuera de la lista -> cerrarla. En VB6 se comparaba
+                ' WindowFromPoint(cursor) con UserControl.hWnd; en twinBASIC esa
+                ' comparacion puede fallar aunque el clic sea DENTRO de la lista, y la
+                ' lista se cerraba antes del MouseUp (sin ItemClick). Ahora se compara
+                ' el cursor con el rectangulo de la ventana.
                 GetCursorPos PT
-                hwin = WindowFromPointXY(PT)
 
-                If hwin <> UserControl.hWnd And hwin <> m_hEdit Then
+                If Not PointInWindow(UserControl.hWnd, PT) Then
 
                     If Not ParentMenu Is Nothing Then
-                        If hwin = ParentMenu.hWnd Then Exit Sub
+                        If PointInWindow(ParentMenu.hWnd, PT) Then Exit Sub
                     End If
 
                     HideList
@@ -1818,11 +1822,38 @@ Class ucList
         End If
     End Sub
 
-    Private Function WindowFromPointXY(ByRef PT As POINTAPI) As LongPtr
-        ' WindowFromPoint recibe un POINT por valor (8 bytes)
-        Dim llPt As LongLong
-        CopyMemory llPt, PT, 8
-        WindowFromPointXY = WindowFromPoint(llPt)
+    ' Elemento seleccionable bajo la coordenada Y (misma logica que MouseMove)
+    Private Function HotItemFromY(ByVal Y As Single) As Long
+        Dim i As Long, lTop As Long
+        HotItemFromY = -1
+        If SB.Visible And SB.PressedPart <> sbpNone Then Exit Function
+        lTop = ListTop - SB.Value
+        For i = 0 To mListCount - 1
+            With m_Items(i)
+                If .Visible Then
+                    If Y >= lTop And Y < lTop + IH Then
+                        If Not .Separator And Not .IsGroup And Not .Disabled Then
+                            HotItemFromY = i
+                            Exit Function
+                        End If
+                    End If
+                    If Not .Separator Then
+                        lTop = lTop + IH
+                    Else
+                        lTop = lTop + IH / 2
+                    End If
+                    If lTop > UserControl.ScaleHeight Then Exit Function
+                End If
+            End With
+        Next
+    End Function
+
+    ' True si el punto (coordenadas de pantalla) esta dentro de la ventana
+    Private Function PointInWindow(ByVal lhWnd As LongPtr, ByRef PT As POINTAPI) As Boolean
+        Dim tR As RECT
+        If lhWnd = 0 Then Exit Function
+        If GetWindowRect(lhWnd, tR) = 0 Then Exit Function
+        PointInWindow = (PT.X >= tR.Left And PT.X < tR.Right And PT.Y >= tR.Top And PT.Y < tR.Bottom)
     End Function
 
     Private Sub TimerHideMenu()
@@ -2303,6 +2334,9 @@ Class ucList
         If SB_MouseDown(Button, X, Y) Then Exit Sub
 
         If Button = vbLeftButton Then
+            ' Si no llego un MouseMove previo (o un WM_MOUSELEAVE lo borro), se
+            ' calcula el elemento bajo el cursor para no perder el clic.
+            If m_HotItem = -1 Then m_HotItem = HotItemFromY(Y)
             If m_HotItem <> -1 Then
 
                 If isWinChild Then
@@ -2402,6 +2436,7 @@ Class ucList
         If bMouseDown = False Then Exit Sub
 
         bMouseDown = False
+        If m_HotItem = -1 Then m_HotItem = HotItemFromY(Y)
         If m_HotItem <> -1 Then
             m_Index = m_HotItem
 
@@ -3775,6 +3810,7 @@ Class ucList
         Dim bHandled As Boolean
         Dim lRet As LongPtr
         Dim sBefore As String
+        Dim PT As POINTAPI
 
         On Error Resume Next
 
@@ -3812,7 +3848,10 @@ Class ucList
                     End If
 
                 Case WM_MOUSELEAVE
-                    If bShow Then
+                    ' Solo si el cursor salio de verdad de la ventana (en twinBASIC
+                    ' puede llegar un WM_MOUSELEAVE con el cursor dentro).
+                    GetCursorPos PT
+                    If bShow And Not PointInWindow(lhWnd, PT) Then
                         m_HotItem = -1
                         bHideSubMenu = False
                         bShowSubMenu = False
@@ -3827,7 +3866,11 @@ Class ucList
                     End If
 
                 Case WM_IME_SETCONTEXT
-                    If bShow Then
+                    ' Solo al PERDER la activacion (wParam = 0), p. ej. Alt+Tab. En
+                    ' twinBASIC el propio clic sobre la lista le da el foco y genera
+                    ' WM_IME_SETCONTEXT(TRUE); en VB6 la lista ya tenia el foco y el
+                    ' original la cerraba con cualquier WM_IME_SETCONTEXT.
+                    If bShow And wParam = 0 Then
                         If m_ListStyle = StyleDropDown Then HideList
                     End If
 

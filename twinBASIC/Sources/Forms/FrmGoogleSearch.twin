@@ -275,16 +275,16 @@ Class FrmGoogleSearch
         End With
     End Sub
 
-    Private Sub ucList1_IndexChange()
+    Private Sub ucList1_IndexChange() Handles ucList1.IndexChange
         Text1(1).Text = ucList1.ItemData(ucList1.ListIndex)
     End Sub
 
-    Private Sub ucList1_ScrollBottom()
+    Private Sub ucList1_ScrollBottom() Handles ucList1.ScrollBottom
         PagePos = PagePos + 10
         Call Search
     End Sub
 
-    Private Sub ucList2_PostAutoComplete()
+    Private Sub ucList2_PostAutoComplete() Handles ucList2.PostAutoComplete
         Text1_KeyPress 0, vbKeyReturn
     End Sub
 

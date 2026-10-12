@@ -44,7 +44,7 @@ Class FrmMain
         End If
     End Sub
 
-    Private Sub ucList1_ItemClick()
+    Private Sub ucList1_ItemClick() Handles ucList1.ItemClick
         Select Case ucList1.ListIndex
             Case 0: FrmAutocomplete.Show
             Case 1: FrmComboBox.Show
